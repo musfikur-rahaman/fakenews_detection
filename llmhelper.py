@@ -1,66 +1,24 @@
+import os
 import streamlit as st
-from transformers import pipeline
-from llmhelper import explain_fake_news, explain_real_news
+from dotenv import load_dotenv
+from langchain_groq import ChatGroq
 
-# Make sure GROQ_API_KEY exists in secrets
-if "GROQ_API_KEY" not in st.secrets:
-    st.error("🚨 Groq API key not found in Streamlit secrets!")
-    st.stop()
+load_dotenv()
 
-# Load classifier (cached for performance)
-@st.cache_resource(show_spinner=False)
-def load_classifier():
-    return pipeline("text-classification", model="afsanehm/fake-news-detection-llm")
+# Get API key from env vars or from Streamlit secrets
+API_KEY = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY")
 
-# Cache explanation calls
-@st.cache_data(show_spinner=False)
-def get_fake_explanation(text):
-    return explain_fake_news(text)
+llm = ChatGroq(api_key=API_KEY, model_name="meta-llama/llama-4-scout-17b-16e-instruct")
 
-@st.cache_data(show_spinner=False)
-def get_real_explanation(text):
-    return explain_real_news(text)
+def explain_fake_news(text):
+    prompt = (
+        f"The following news article has been classified as FAKE.\n"
+        f"Explain in a few sentences why this might be fake news:\n\n{text}\n\nExplanation:"
+    )
+    response = llm.invoke(prompt)
+    return response.content.strip()
 
-# Optional label formatting
-def map_label(label):
-    label_map = {
-        "FAKE": "🚨 FAKE",
-        "REAL": "✅ REAL",
-        "LABEL_1": "🚨 FAKE",
-        "LABEL_0": "✅ REAL"
-    }
-    return label_map.get(label, label)
-
-# Streamlit UI setup
-st.set_page_config(page_title="Fake News Detector", page_icon="📰")
-st.title("📰 Fake News Detector with LLaMA Explanation")
-st.markdown("Enter a news article, headline, or paragraph to check whether it's likely **fake or real**.")
-
-user_input = st.text_area("📝 Enter news content here:", height=200)
-
-if st.button("🔍 Classify"):
-    if not user_input.strip():
-        st.warning("⚠️ Please enter some text to classify.")
-    else:
-        with st.spinner("Classifying..."):
-            clf = load_classifier()
-            result = clf(user_input, truncation=True)[0]
-            label = result['label']
-            score = result['score']
-            display_label = map_label(label)
-
-        st.success(f"**Prediction:** {display_label}")
-        st.write(f"**Confidence:** `{score:.2f}`")
-
-        # Show explanation
-        if label in ["FAKE", "LABEL_1"]:
-            with st.spinner("Generating explanation for FAKE prediction..."):
-                explanation = get_fake_explanation(user_input)
-            with st.expander("🧠 Why might this be fake?"):
-                st.write(explanation)
-
-        else:
-            with st.spinner("Generating explanation for REAL prediction..."):
-                explanation = get_real_explanation(user_input)
-            with st.expander("✅ Why might this be real?"):
-                st.write(explanation)
+if __name__ == "__main__":
+    sample = "AI is taking over the world next year."
+    print("Sample explanation:")
+    print(explain_fake_news(sample))
