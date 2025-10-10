@@ -1,6 +1,7 @@
 import shutil
 import kagglehub
 import os
+import sys
 
 # Download dataset
 path = kagglehub.dataset_download("bhavikjikadara/fake-news-detection")
