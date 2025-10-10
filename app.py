@@ -31,7 +31,7 @@ def map_label(label):
     return label_map.get(label, label)
 
 st.set_page_config(page_title="Fake News Detector", page_icon="📰")
-@@ -33,11 +50,10 @@ def map_label(label):
+def map_label(label):
         st.success(f"**Prediction:** {display_label}")
         st.write(f"**Confidence:** `{score:.2f}`")
 
