@@ -40,3 +40,5 @@ if st.button("🔍 Classify"):
             st.write(explanation)
         else:
             st.info("This news was classified as REAL, no explanation generated.")
+
+// End of file: app.py
