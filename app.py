@@ -1,16 +1,33 @@
 import streamlit as st
 from transformers import pipeline
-from llmhelper import explain_fake_news  # import your Groq explanation function
+from llmhelper import explain_fake_news  # your Groq explanation function
 from dotenv import load_dotenv
+import os
 
-load_dotenv()  # make sure env vars like GROQ_API_KEY are loaded
+load_dotenv()  # load local .env if available
 
-@st.cache_resource
+# Get API key from environment or Streamlit secrets
+GROQ_API_KEY = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY")
+
+if not GROQ_API_KEY:
+    st.error("Groq API key not found! Please set it in your .env or Streamlit secrets.")
+    st.stop()
+
+@st.cache_resource(show_spinner=False)
 def load_classifier():
     return pipeline("text-classification", model="afsanehm/fake-news-detection-llm")
 
+@st.cache_data(show_spinner=False)
+def get_explanation(text):
+    return explain_fake_news(text)
+
 def map_label(label):
-    label_map = {"FAKE": "🚨 FAKE", "REAL": "✅ REAL", "LABEL_1": "🚨 FAKE", "LABEL_0": "✅ REAL"}
+    label_map = {
+        "FAKE": "🚨 FAKE",
+        "REAL": "✅ REAL",
+        "LABEL_1": "🚨 FAKE",
+        "LABEL_0": "✅ REAL"
+    }
     return label_map.get(label, label)
 
 st.set_page_config(page_title="Fake News Detector", page_icon="📰")
@@ -33,11 +50,10 @@ if st.button("🔍 Classify"):
         st.success(f"**Prediction:** {display_label}")
         st.write(f"**Confidence:** `{score:.2f}`")
 
-        if label == "FAKE" or label == "LABEL_1":  # handle different label schemes
+        if label in ["FAKE", "LABEL_1"]:
             with st.spinner("Generating explanation with Groq LLaMA..."):
-                explanation = explain_fake_news(user_input)
-            st.markdown("**Explanation why this might be fake:**")
-            st.write(explanation)
+                explanation = get_explanation(user_input)
+            with st.expander("Explanation why this might be fake"):
+                st.write(explanation)
         else:
             st.info("This news was classified as REAL, no explanation generated.")
-
