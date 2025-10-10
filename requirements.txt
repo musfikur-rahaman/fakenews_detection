@@ -1,5 +1,6 @@
 streamlit
 transformers
-pandas
-langchain_groq
+torch
 python-dotenv
+requests
+langchain-groq
