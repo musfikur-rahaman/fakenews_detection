@@ -1,43 +1,62 @@
-from dotenv import load_dotenv
-from langchain_groq import ChatGroq
-import os
+import streamlit as st
+from transformers import pipeline
+from llmhelper import explain_fake_news, explain_real_news
 
-load_dotenv()
+# Load GROQ API key from Streamlit secrets
+GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 
-API_KEY = os.getenv("GROQ_API_KEY")
+if not GROQ_API_KEY:
+    st.error("Groq API key not found in Streamlit secrets.")
+    st.stop()
 
-if not API_KEY:
-    raise ValueError("GROQ_API_KEY not found in environment variables or .env file")
+@st.cache_resource(show_spinner=False)
+def load_classifier():
+    return pipeline("text-classification", model="afsanehm/fake-news-detection-llm")
 
-llm = ChatGroq(api_key=API_KEY, model_name="meta-llama/llama-4-scout-17b-16e-instruct")
+@st.cache_data(show_spinner=False)
+def get_fake_explanation(text):
+    return explain_fake_news(text)
 
-def explain_fake_news(text: str) -> str:
-    """
-    Use Groq LLaMA to explain why a text is classified as fake news.
-    """
-    prompt = (
-        f"The following news article has been classified as FAKE.\n"
-        f"Explain in a few sentences why this might be fake news:\n\n{text}\n\nExplanation:"
-    )
-    response = llm.invoke(prompt)
-    return response.content.strip()
+@st.cache_data(show_spinner=False)
+def get_real_explanation(text):
+    return explain_real_news(text)
 
-def explain_real_news(text: str) -> str:
-    """
-    Use Groq LLaMA to explain why a text is credible and reliable news.
-    """
-    prompt = (
-        f"The following news article has been classified as REAL.\n"
-        f"Explain in a few sentences why this news appears credible and reliable:\n\n{text}\n\nExplanation:"
-    )
-    response = llm.invoke(prompt)
-    return response.content.strip()
+def map_label(label):
+    label_map = {
+        "FAKE": "🚨 FAKE",
+        "REAL": "✅ REAL",
+        "LABEL_1": "🚨 FAKE",
+        "LABEL_0": "✅ REAL"
+    }
+    return label_map.get(label, label)
 
-if __name__ == "__main__":
-    sample_fake = "Aliens landed on Earth yesterday and gave free technology to everyone."
-    sample_real = "NASA successfully launched a new Mars rover last week."
+st.set_page_config(page_title="Fake News Detector", page_icon="📰")
+st.title("📰 Fake News Detector with Explanation")
+st.markdown("Enter a news article, headline, or paragraph to check whether it's likely **fake or real**.")
 
-    print("Fake news explanation:")
-    print(explain_fake_news(sample_fake))
-    print("\nReal news explanation:")
-    print(explain_real_news(sample_real))
+user_input = st.text_area("Enter news content here:", height=200)
+
+if st.button("🔍 Classify"):
+    if not user_input.strip():
+        st.warning("Please enter some text to classify.")
+    else:
+        with st.spinner("Classifying..."):
+            clf = load_classifier()
+            result = clf(user_input, truncation=True)[0]
+            label = result['label']
+            score = result['score']
+            display_label = map_label(label)
+
+        st.success(f"**Prediction:** {display_label}")
+        st.write(f"**Confidence:** `{score:.2f}`")
+
+        if label in ["FAKE", "LABEL_1"]:
+            with st.spinner("Generating explanation with Groq LLaMA..."):
+                explanation = get_fake_explanation(user_input)
+            with st.expander("Explanation why this might be fake"):
+                st.write(explanation)
+        else:
+            with st.spinner("Generating explanation for real news with Groq LLaMA..."):
+                explanation = get_real_explanation(user_input)
+            with st.expander("Explanation why this news appears credible"):
+                st.write(explanation)
