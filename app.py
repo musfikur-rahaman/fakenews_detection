@@ -32,7 +32,7 @@ def map_label(label):
 
 # Page config and layout
 st.set_page_config(page_title="Fake News Detector", page_icon="📰")
-st.title("📰 Fake News Detector with Explanation")
+st.title("Fake News Detector")
 st.markdown("Enter a news article, headline, or paragraph to check whether it's likely **fake or real**.")
 
 user_input = st.text_area("Enter news content here:", height=200)
