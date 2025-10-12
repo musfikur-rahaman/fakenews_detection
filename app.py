@@ -31,7 +31,7 @@ def map_label(label):
     return label_map.get(label, label)
 
 # Page config and layout
-st.set_page_config(page_title="Detect Fake News", page_icon="📰")
+st.set_page_config(page_title="Fake News Detector", page_icon="📰")
 st.title("Fake News Detector")
 st.markdown("Enter a news article, headline, or paragraph to check whether it's likely **fake or real**.")
 
