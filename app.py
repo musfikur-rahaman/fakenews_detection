@@ -133,9 +133,14 @@ if st.session_state.history:
     st.markdown("### 📝 Session History")
     st.table(st.session_state.history)
 
+
+# ---------- FOOTER ----------
 st.markdown("""
 <hr style="margin-top:40px;">
-<div style="text-align:center; font-size:13px; color:#888;">
-Built with Streamlit, HuggingFace Transformers, and Groq LLaMA.
+<div style="text-align:center; font-size:13px; color:#888; line-height:1.5;">
+Built with Streamlit, HuggingFace Transformers, and Groq LLaMA.<br>
+<strong>How it works:</strong> This detector combines an AI text-classification model with a hallucination keyword checker. 
+It flags news as FAKE if it contains suspicious or sensational phrases (e.g., miracle cures, conspiracies, celebrity scandals). 
+You can provide feedback to correct predictions, and the system learns keywords from FAKE news in the session to improve future accuracy.
 </div>
 """, unsafe_allow_html=True)
