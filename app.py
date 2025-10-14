@@ -1,10 +1,8 @@
 import streamlit as st
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from transformers import pipeline
 from llmhelper import explain_fake_news
 from dotenv import load_dotenv
 import os
-import torch
-import torch.nn.functional as F
 import re
 
 # ---------- ENV ----------
@@ -15,121 +13,53 @@ if not GROQ_API_KEY:
     st.stop()
 
 # ---------- CONFIG ----------
-THRESHOLD = 0.55
 MODEL_NAME = "afsanehm/fake-news-detection-llm"
+THRESHOLD = 0.55  # Base threshold for FAKE label
 
 # ---------- LOAD MODEL ----------
 @st.cache_resource(show_spinner=False)
 def load_classifier():
-    model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME)
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-    return model, tokenizer
+    return pipeline("text-classification", model=MODEL_NAME)
 
 @st.cache_data(show_spinner=False)
 def get_fake_explanation(text):
     return explain_fake_news(text)
 
-# ---------- HELPER FUNCTIONS ----------
-def map_label(label):
-    return {
-        "FAKE": "FAKE",
-        "REAL": "REAL",
-        "LABEL_1": "FAKE",
-        "LABEL_0": "REAL"
-    }.get(label, label)
-
-def classify_text(text, model, tokenizer):
-    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
-    with torch.no_grad():
-        outputs = model(**inputs)
-        probs = F.softmax(outputs.logits, dim=-1).squeeze().tolist()
-    return {"REAL": probs[0], "FAKE": probs[1]}
-
-def final_label(probs, threshold=THRESHOLD):
-    return "FAKE" if probs["FAKE"] >= threshold else "REAL"
-
 # ---------- HALLUCINATION DETECTORS ----------
-def flag_impossible_medical_claim(text):
-    patterns = [r'\bovernight\b', r'\binstantly\b', r'\bimmediately\b', r'\bin \d{1,2} days\b']
-    miracle_words = [r'\bcures\b', r'\bheals\b', r'\breverses\b', r'\beliminates\b', r'\bmiracle\b']
-    medical_terms = [r'\bdiabetes\b', r'\bcancer\b', r'\bheart disease\b', r'\bvirus\b', r'\binfection\b']
-    pattern = '|'.join(patterns + miracle_words + medical_terms)
-    return bool(re.search(pattern, text, flags=re.IGNORECASE))
-
-def flag_absurd_or_fantasy_claim(text):
-    absurd_keywords = [
-        r'\balien\b', r'\bextraterrestrial\b', r'\btime travel\b', r'\bghost\b',
-        r'\bmagic(al)?\b', r'\blevitate\b', r'\bsecretly married\b', r'\bshocking leak\b'
-    ]
-    pattern = '|'.join(absurd_keywords)
-    return bool(re.search(pattern, text, flags=re.IGNORECASE))
-
-def flag_impossible_numbers_or_timelines(text):
-    patterns = [r'\b\d{7,}\b', r'\b\d{1,2} seconds\b', r'\b\d{1,2} minutes\b', r'\b\d{1,2} hours\b']
-    pattern = '|'.join(patterns)
-    return bool(re.search(pattern, text, flags=re.IGNORECASE))
-
-def flag_financial_scams(text):
+def flag_hallucination_keywords(text):
+    """Detect obvious fake news patterns using keywords"""
     patterns = [
-        r'\$\d{3,} (daily|weekly|monthly)', r'no work required', r'get rich quick',
-        r'earn \d{3,} per', r'unlimited money', r'free money'
+        # Medical / miracle
+        r'\bovernight\b|\binstantly\b|\bcures\b|\bmiracle\b|\bdisease\b',
+        # Fantasy / aliens
+        r'\balien\b|\bextraterrestrial\b|\btime travel\b|\bghost\b|\bpyramid\b',
+        # Financial scams
+        r'\$\d{2,} (daily|weekly|monthly)|get rich quick|no work required|stock \d{2,4}%',
+        # Celebrities
+        r'\bcelebrity\b|\bsecretly married\b|\bshocking\b|\bscandal\b',
+        # Conspiracies
+        r'\bcover(ing)? up\b|\bsecret\b|\bgovernment\b|\bNASA\b|\bunexplained\b'
     ]
-    pattern = '|'.join(patterns)
-    return bool(re.search(pattern, text, flags=re.IGNORECASE))
+    combined = '|'.join(patterns)
+    return bool(re.search(combined, text, flags=re.IGNORECASE))
 
-def flag_financial_exaggeration(text):
-    patterns = [r'\b\d{2,4}%\b', r'\bafter .*tweet(s|ed)\b', r'\bmoon\b', r'\bhype\b', r'\bskyrocket\b', r'\bexplodes\b']
-    pattern = '|'.join(patterns)
-    return bool(re.search(pattern, text, flags=re.IGNORECASE))
+# ---------- HYBRID CLASSIFICATION ----------
+def hybrid_classify(text, classifier):
+    # Step 1: Model prediction
+    result = classifier(text, truncation=True)[0]
+    label = result["label"]
+    score = result["score"]
 
-def flag_unusual_subscription_claims(text):
-    patterns = [r'\bto start charging\b', r'\bper month\b', r'\bprivacy\b', r'\baccount(s)?\b']
-    if bool(re.search(r'\b(Facebook|Instagram|Twitter|X|Snapchat)\b', text, flags=re.IGNORECASE)) \
-       and bool(re.search('|'.join(patterns), text, flags=re.IGNORECASE)):
-        return True
-    return False
+    # Step 2: Keyword hallucination check
+    halluc_flag = flag_hallucination_keywords(text)
+    if halluc_flag:
+        label = "FAKE"
+        score = max(score, 0.95)  # Boost confidence if hallucination detected
 
-def flag_miracle_product_claims(text):
-    patterns = [r'\bnew app\b', r'\bdevice\b', r'\btool\b', r'\bmakes you\b', r'\beffortless\b']
-    miracle_words = [r'\bearn\b', r'\bget rich\b', r'\bweight loss\b', r'\blose \d+ pounds\b']
-    pattern = '|'.join(patterns + miracle_words)
-    return bool(re.search(pattern, text, flags=re.IGNORECASE))
-
-def flag_celebrities_or_scandal(text):
-    patterns = [r'\bcelebrity\b', r'\bstar\b', r'\bsecretly\b', r'\bshocking\b', r'\bscandal\b', r'\bmarried\b']
-    return bool(re.search('|'.join(patterns), text, flags=re.IGNORECASE))
-
-def flag_scientific_breakthroughs(text):
-    patterns = [r'\bscientists\b', r'\bdiscovered\b', r'\bbreakthrough\b', r'\bnew planet\b', r'\bimmortality\b']
-    impossible_words = [r'\bovernight\b', r'\binstantly\b', r'\bmiracle\b']
-    pattern = '|'.join(patterns + impossible_words)
-    return bool(re.search(pattern, text, flags=re.IGNORECASE))
-
-def flag_conspiracy_or_hidden_discovery(text):
-    patterns = [
-        r'\bcover(ing)? up\b', r'\bsecret\b', r'\bNASA\b', r'\bgovernment\b',
-        r'\bancient\b', r'\bpyramid\b', r'\baliens?\b', r'\bunexplained\b', r'\bmystery\b'
-    ]
-    pattern = '|'.join(patterns)
-    return bool(re.search(pattern, text, flags=re.IGNORECASE))
-
-# ---------- MAIN HALLUCINATION CHECK ----------
-def check_hallucination(text):
-    return (
-        flag_impossible_medical_claim(text) or
-        flag_absurd_or_fantasy_claim(text) or
-        flag_impossible_numbers_or_timelines(text) or
-        flag_financial_scams(text) or
-        flag_financial_exaggeration(text) or
-        flag_unusual_subscription_claims(text) or
-        flag_miracle_product_claims(text) or
-        flag_celebrities_or_scandal(text) or
-        flag_scientific_breakthroughs(text) or
-        flag_conspiracy_or_hidden_discovery(text)
-    )
+    return label, score, halluc_flag
 
 # ---------- UI ----------
-st.set_page_config(page_title="Fake News Detector", layout="centered")
+st.set_page_config(page_title="Hybrid Fake News Detector", layout="centered")
 st.markdown("""
 <style>
 body { background-color: #f5f7fa; font-family: 'Segoe UI', sans-serif; }
@@ -143,8 +73,8 @@ h1 { color: #1f4e79; text-align: center; margin-bottom: 0.5rem; }
 if "page" not in st.session_state: st.session_state.page = "home"
 if "user_input" not in st.session_state: st.session_state.user_input = ""
 if "result" not in st.session_state: st.session_state.result = None
-if "probs" not in st.session_state: st.session_state.probs = None
-if "hallucination_flag" not in st.session_state: st.session_state.hallucination_flag = None
+if "score" not in st.session_state: st.session_state.score = None
+if "halluc_flag" not in st.session_state: st.session_state.halluc_flag = None
 
 # ---------- NAVIGATION ----------
 col1, col2 = st.columns(2)
@@ -160,15 +90,15 @@ st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
 # ---------- HOME PAGE ----------
 if st.session_state.page == "home":
-    st.markdown("<h1>Fake News Detector</h1>", unsafe_allow_html=True)
-    st.markdown("<div class='subtitle'>Detect whether a news article is likely fake or real using AI.</div>", unsafe_allow_html=True)
+    st.markdown("<h1>Hybrid Fake News Detector</h1>", unsafe_allow_html=True)
+    st.markdown("<div class='subtitle'>Detect whether news is likely fake using AI and hallucination checks.</div>", unsafe_allow_html=True)
     st.markdown("""
-    **How to use:**
-    1. Go to the **Classify** tab  
-    2. Paste your news text  
-    3. Click **Run Classification**  
-    4. View prediction, confidence, and explanation  
-    """)
+**How to use:**
+1. Go to the **Classify** tab  
+2. Paste your news text  
+3. Click **Run Classification**  
+4. View prediction, confidence, and explanation
+""")
 
 # ---------- CLASSIFY PAGE ----------
 elif st.session_state.page == "classify":
@@ -178,17 +108,16 @@ elif st.session_state.page == "classify":
         "Paste your news content below:",
         height=180,
         value=st.session_state.user_input,
-        placeholder="e.g. Breaking: Scientists discover a new planet..."
+        placeholder="e.g. Ancient Pyramid Found on Mars — NASA Trying to Cover It Up"
     )
 
-    col_reset, col_run = st.columns([1, 2])
-
+    col_reset, col_run = st.columns([1,2])
     with col_reset:
         if st.button("Reset"):
             st.session_state.user_input = ""
             st.session_state.result = None
-            st.session_state.probs = None
-            st.session_state.hallucination_flag = None
+            st.session_state.score = None
+            st.session_state.halluc_flag = None
             st.rerun()
 
     with col_run:
@@ -196,34 +125,22 @@ elif st.session_state.page == "classify":
             if user_input.strip():
                 st.session_state.user_input = user_input
                 with st.spinner("Analyzing..."):
-                    model, tokenizer = load_classifier()
-                    probs = classify_text(user_input, model, tokenizer)
-                    label = final_label(probs, THRESHOLD)
-
-                    hallucination_flag = check_hallucination(user_input)
-                    if hallucination_flag:
-                        label = "FAKE"
-                        probs["FAKE"] = max(probs["FAKE"], 0.95)
-
+                    classifier = load_classifier()
+                    label, score, halluc_flag = hybrid_classify(user_input, classifier)
                     st.session_state.result = label
-                    st.session_state.probs = probs
-                    st.session_state.hallucination_flag = hallucination_flag
+                    st.session_state.score = score
+                    st.session_state.halluc_flag = halluc_flag
 
+    # ---------- RESULTS ----------
     if st.session_state.result:
-        color = "#ff4b4b" if st.session_state.result == "FAKE" else "#28a745"
+        color = "#ff4b4b" if st.session_state.result=="FAKE" else "#28a745"
         st.markdown(f"<div class='result-box' style='border-left: 6px solid {color}'>", unsafe_allow_html=True)
         st.subheader("Prediction Results")
-        col1, col2, col3 = st.columns(3)
-        with col1: st.metric("Label", st.session_state.result)
-        with col2: st.metric("FAKE Probability", f"{st.session_state.probs['FAKE']*100:.2f}%")
-        with col3: st.metric("REAL Probability", f"{st.session_state.probs['REAL']*100:.2f}%")
+        st.metric("Label", st.session_state.result)
+        st.metric("Confidence", f"{st.session_state.score*100:.2f}%")
         st.markdown("</div>", unsafe_allow_html=True)
 
-        with st.expander("🔍 View Model Scores & Hallucination Flags"):
-            st.json(st.session_state.probs)
-            st.write(f"Hallucination / Impossible Claim Flag: {st.session_state.hallucination_flag}")
-
-        if st.session_state.result == "FAKE":
+        if st.session_state.result=="FAKE":
             with st.spinner("Generating explanation..."):
                 explanation = get_fake_explanation(user_input)
             st.markdown("#### 🧠 Why This May Be Fake")
