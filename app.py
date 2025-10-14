@@ -60,9 +60,10 @@ if "history" not in st.session_state: st.session_state.history = []
 if "corrections" not in st.session_state: st.session_state.corrections = {}
 
 # ---------- HEADER ----------
-st.title("Fake News Detector")
+st.markdown("<h1 style='text-align:center; color:#333;'>Fake News Detector</h1>", unsafe_allow_html=True)
 st.markdown("<div style='text-align:center; color:#333;'>AI + Hallucination Keywords + LLM Fact-Check Ensemble</div>", unsafe_allow_html=True)
 st.markdown("---")
+
 
 
 # ---------- INPUT FORM ----------
