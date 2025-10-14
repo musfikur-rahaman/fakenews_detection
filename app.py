@@ -83,7 +83,6 @@ def flag_financial_exaggeration(text):
     return bool(re.search(pattern, text, flags=re.IGNORECASE))
 
 def flag_unusual_subscription_claims(text):
-    # Flags implausible subscription/policy announcements
     patterns = [r'\bto start charging\b', r'\bper month\b', r'\bprivacy\b', r'\baccount(s)?\b']
     if bool(re.search(r'\b(Facebook|Instagram|Twitter|X|Snapchat)\b', text, flags=re.IGNORECASE)) \
        and bool(re.search('|'.join(patterns), text, flags=re.IGNORECASE)):
@@ -106,6 +105,15 @@ def flag_scientific_breakthroughs(text):
     pattern = '|'.join(patterns + impossible_words)
     return bool(re.search(pattern, text, flags=re.IGNORECASE))
 
+def flag_conspiracy_or_hidden_discovery(text):
+    patterns = [
+        r'\bcover(ing)? up\b', r'\bsecret\b', r'\bNASA\b', r'\bgovernment\b',
+        r'\bancient\b', r'\bpyramid\b', r'\baliens?\b', r'\bunexplained\b', r'\bmystery\b'
+    ]
+    pattern = '|'.join(patterns)
+    return bool(re.search(pattern, text, flags=re.IGNORECASE))
+
+# ---------- MAIN HALLUCINATION CHECK ----------
 def check_hallucination(text):
     return (
         flag_impossible_medical_claim(text) or
@@ -116,7 +124,8 @@ def check_hallucination(text):
         flag_unusual_subscription_claims(text) or
         flag_miracle_product_claims(text) or
         flag_celebrities_or_scandal(text) or
-        flag_scientific_breakthroughs(text)
+        flag_scientific_breakthroughs(text) or
+        flag_conspiracy_or_hidden_discovery(text)
     )
 
 # ---------- UI ----------
