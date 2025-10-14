@@ -1,19 +1,13 @@
-
 import os
 import streamlit as st
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 
-
 load_dotenv()
 
-# Get API key from env vars or from Streamlit secrets
 API_KEY = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY")
 
 llm = ChatGroq(api_key=API_KEY, model_name="meta-llama/llama-4-scout-17b-16e-instruct")
-
-
-
 
 def explain_fake_news(text):
     prompt = (
@@ -22,7 +16,6 @@ def explain_fake_news(text):
     )
     response = llm.invoke(prompt)
     return response.content.strip()
-
 
 if __name__ == "__main__":
     sample = "AI is taking over the world next year."
