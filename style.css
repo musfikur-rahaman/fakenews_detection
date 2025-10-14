@@ -1,78 +1,85 @@
 body {
-    background-color: #f9f9f9;
+    background-color: #e0e0e0;  /* soft grey */
     font-family: 'Segoe UI', sans-serif;
+    color: #333;
 }
 
 h1, h2, h3, h4 {
     color: #1f4e79;
 }
 
+/* Textarea Input */
 textarea, .text-area {
     border-radius: 8px;
-    border: 1px solid #ccc;
+    border: 1px solid #aaa;
     padding: 0.5rem;
+    background-color: #f5f5f5;
+    color: #333;
 }
 
+/* Card Style */
 .card {
-    background-color: #ffffff;
+    background-color: #f8f8f8;
     border-radius: 12px;
     padding: 1rem 1.5rem;
     margin-bottom: 1rem;
-    box-shadow: 0px 4px 12px rgba(0,0,0,0.08);
+    box-shadow: 0px 4px 12px rgba(0,0,0,0.06);
+    transition: transform 0.2s ease;
+}
+.card:hover {
+    transform: translateY(-2px);
 }
 
-.card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    cursor: pointer;
-    user-select: none;
-}
-
-.card-header h4 {
-    margin: 0;
-}
-
+/* Card Content */
 .card-content {
     padding-top: 0.5rem;
 }
 
+/* Fake & Real Border Indicators */
 .fake {
     border-left: 6px solid #ff4b4b;
 }
-
 .real {
     border-left: 6px solid #28a745;
 }
 
-.nav-container {
-    display: flex;
-    gap: 1rem;
-    justify-content: center;
-    margin-bottom: 1.5rem;
-}
-
-.nav-button {
-    background-color: #1f4e79;
-    color: #fff;
-    border: none;
-    padding: 0.6rem 1.5rem;
+/* Confidence Bar */
+.confidence-container {
+    background-color: #ddd;
     border-radius: 6px;
-    cursor: pointer;
+    height: 12px;
+    width: 100%;
+    margin: 0.5rem 0 1rem 0;
+    overflow: hidden;
+}
+.confidence-fill {
+    height: 100%;
+    border-radius: 6px;
+    text-align: right;
+    padding-right: 5px;
+    color: white;
+    font-size: 10px;
+    font-weight: bold;
+    line-height: 12px;
+    transition: width 0.5s ease;
+}
+.confidence-fake {
+    background-color: #ff4b4b;
+}
+.confidence-real {
+    background-color: #28a745;
 }
 
-.nav-button:hover {
-    background-color: #163b5c;
-}
-
+/* Footer */
 .footer {
     text-align: center;
     font-size: 13px;
-    color: #888;
+    color: #555;
     line-height: 1.5;
     margin-top: 40px;
 }
 
+/* Feedback Buttons */
 .feedback-button {
     background-color: #1f4e79;
     color: #fff;
@@ -81,7 +88,6 @@ textarea, .text-area {
     border-radius: 6px;
     cursor: pointer;
 }
-
 .feedback-button:hover {
     background-color: #163b5c;
 }
