@@ -14,7 +14,7 @@ if not GROQ_API_KEY:
 
 # ---------- CONFIG ----------
 MODEL_NAME = "afsanehm/fake-news-detection-llm"
-THRESHOLD = 0.55  # Base threshold for FAKE label
+THRESHOLD = 0.55
 
 # ---------- LOAD MODEL ----------
 @st.cache_resource(show_spinner=False)
@@ -27,35 +27,24 @@ def get_fake_explanation(text):
 
 # ---------- HALLUCINATION DETECTORS ----------
 def flag_hallucination_keywords(text):
-    """Detect obvious fake news patterns using keywords"""
     patterns = [
-        # Medical / miracle
         r'\bovernight\b|\binstantly\b|\bcures\b|\bmiracle\b|\bdisease\b',
-        # Fantasy / aliens
         r'\balien\b|\bextraterrestrial\b|\btime travel\b|\bghost\b|\bpyramid\b',
-        # Financial scams
         r'\$\d{2,} (daily|weekly|monthly)|get rich quick|no work required|stock \d{2,4}%',
-        # Celebrities
         r'\bcelebrity\b|\bsecretly married\b|\bshocking\b|\bscandal\b',
-        # Conspiracies
         r'\bcover(ing)? up\b|\bsecret\b|\bgovernment\b|\bNASA\b|\bunexplained\b'
     ]
-    combined = '|'.join(patterns)
-    return bool(re.search(combined, text, flags=re.IGNORECASE))
+    return bool(re.search('|'.join(patterns), text, flags=re.IGNORECASE))
 
 # ---------- HYBRID CLASSIFICATION ----------
 def hybrid_classify(text, classifier):
-    # Step 1: Model prediction
     result = classifier(text, truncation=True)[0]
     label = result["label"]
     score = result["score"]
-
-    # Step 2: Keyword hallucination check
     halluc_flag = flag_hallucination_keywords(text)
     if halluc_flag:
         label = "FAKE"
-        score = max(score, 0.95)  # Boost confidence if hallucination detected
-
+        score = max(score, 0.95)
     return label, score, halluc_flag
 
 # ---------- UI ----------
@@ -75,6 +64,7 @@ if "user_input" not in st.session_state: st.session_state.user_input = ""
 if "result" not in st.session_state: st.session_state.result = None
 if "score" not in st.session_state: st.session_state.score = None
 if "halluc_flag" not in st.session_state: st.session_state.halluc_flag = None
+if "history" not in st.session_state: st.session_state.history = []
 
 # ---------- NAVIGATION ----------
 col1, col2 = st.columns(2)
@@ -97,7 +87,7 @@ if st.session_state.page == "home":
 1. Go to the **Classify** tab  
 2. Paste your news text  
 3. Click **Run Classification**  
-4. View prediction, confidence, and explanation
+4. View prediction, confidence, explanation, and session history
 """)
 
 # ---------- CLASSIFY PAGE ----------
@@ -127,9 +117,18 @@ elif st.session_state.page == "classify":
                 with st.spinner("Analyzing..."):
                     classifier = load_classifier()
                     label, score, halluc_flag = hybrid_classify(user_input, classifier)
+
                     st.session_state.result = label
                     st.session_state.score = score
                     st.session_state.halluc_flag = halluc_flag
+
+                    # Add to session history
+                    st.session_state.history.append({
+                        "News": user_input,
+                        "Label": label,
+                        "Confidence": f"{score*100:.2f}%",
+                        "Hallucination Flag": halluc_flag
+                    })
 
     # ---------- RESULTS ----------
     if st.session_state.result:
@@ -147,6 +146,11 @@ elif st.session_state.page == "classify":
             st.write(explanation)
         else:
             st.success("✅ This news was classified as REAL.")
+
+    # ---------- SESSION HISTORY ----------
+    if st.session_state.history:
+        st.markdown("### 📝 Session History")
+        st.table(st.session_state.history)
 
 # ---------- FOOTER ----------
 st.markdown("""
