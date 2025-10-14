@@ -50,10 +50,10 @@ def final_label(probs, threshold=THRESHOLD):
 
 # ---------- HALLUCINATION DETECTORS ----------
 def flag_impossible_medical_claim(text):
-    impossible_patterns = [r'\bovernight\b', r'\binstantly\b', r'\bimmediately\b', r'\bin \d{1,2} days\b']
+    patterns = [r'\bovernight\b', r'\binstantly\b', r'\bimmediately\b', r'\bin \d{1,2} days\b']
     miracle_words = [r'\bcures\b', r'\bheals\b', r'\breverses\b', r'\beliminates\b', r'\bmiracle\b']
     medical_terms = [r'\bdiabetes\b', r'\bcancer\b', r'\bheart disease\b', r'\bvirus\b', r'\binfection\b']
-    pattern = '|'.join(impossible_patterns + miracle_words + medical_terms)
+    pattern = '|'.join(patterns + miracle_words + medical_terms)
     return bool(re.search(pattern, text, flags=re.IGNORECASE))
 
 def flag_absurd_or_fantasy_claim(text):
@@ -65,28 +65,45 @@ def flag_absurd_or_fantasy_claim(text):
     return bool(re.search(pattern, text, flags=re.IGNORECASE))
 
 def flag_impossible_numbers_or_timelines(text):
-    patterns = [
-        r'\b\d{7,}\b',
-        r'\b\d{1,2} seconds\b', r'\b\d{1,2} minutes\b', r'\b\d{1,2} hours\b'
-    ]
+    patterns = [r'\b\d{7,}\b', r'\b\d{1,2} seconds\b', r'\b\d{1,2} minutes\b', r'\b\d{1,2} hours\b']
     pattern = '|'.join(patterns)
     return bool(re.search(pattern, text, flags=re.IGNORECASE))
 
 def flag_financial_scams(text):
     patterns = [
-        r'\$\d{3,} (daily|weekly|monthly)',
-        r'no work required', r'get rich quick', r'earn \d{3,} per', r'unlimited money', r'free money'
+        r'\$\d{3,} (daily|weekly|monthly)', r'no work required', r'get rich quick',
+        r'earn \d{3,} per', r'unlimited money', r'free money'
     ]
     pattern = '|'.join(patterns)
     return bool(re.search(pattern, text, flags=re.IGNORECASE))
 
 def flag_financial_exaggeration(text):
-    patterns = [
-        r'\b\d{2,4}%\b',
-        r'\bafter .*tweet(s|ed)\b',
-        r'\bmoon\b', r'\bhype\b', r'\bskyrocket\b', r'\bexplodes\b'
-    ]
+    patterns = [r'\b\d{2,4}%\b', r'\bafter .*tweet(s|ed)\b', r'\bmoon\b', r'\bhype\b', r'\bskyrocket\b', r'\bexplodes\b']
     pattern = '|'.join(patterns)
+    return bool(re.search(pattern, text, flags=re.IGNORECASE))
+
+def flag_unusual_subscription_claims(text):
+    # Flags implausible subscription/policy announcements
+    patterns = [r'\bto start charging\b', r'\bper month\b', r'\bprivacy\b', r'\baccount(s)?\b']
+    if bool(re.search(r'\b(Facebook|Instagram|Twitter|X|Snapchat)\b', text, flags=re.IGNORECASE)) \
+       and bool(re.search('|'.join(patterns), text, flags=re.IGNORECASE)):
+        return True
+    return False
+
+def flag_miracle_product_claims(text):
+    patterns = [r'\bnew app\b', r'\bdevice\b', r'\btool\b', r'\bmakes you\b', r'\beffortless\b']
+    miracle_words = [r'\bearn\b', r'\bget rich\b', r'\bweight loss\b', r'\blose \d+ pounds\b']
+    pattern = '|'.join(patterns + miracle_words)
+    return bool(re.search(pattern, text, flags=re.IGNORECASE))
+
+def flag_celebrities_or_scandal(text):
+    patterns = [r'\bcelebrity\b', r'\bstar\b', r'\bsecretly\b', r'\bshocking\b', r'\bscandal\b', r'\bmarried\b']
+    return bool(re.search('|'.join(patterns), text, flags=re.IGNORECASE))
+
+def flag_scientific_breakthroughs(text):
+    patterns = [r'\bscientists\b', r'\bdiscovered\b', r'\bbreakthrough\b', r'\bnew planet\b', r'\bimmortality\b']
+    impossible_words = [r'\bovernight\b', r'\binstantly\b', r'\bmiracle\b']
+    pattern = '|'.join(patterns + impossible_words)
     return bool(re.search(pattern, text, flags=re.IGNORECASE))
 
 def check_hallucination(text):
@@ -95,7 +112,11 @@ def check_hallucination(text):
         flag_absurd_or_fantasy_claim(text) or
         flag_impossible_numbers_or_timelines(text) or
         flag_financial_scams(text) or
-        flag_financial_exaggeration(text)
+        flag_financial_exaggeration(text) or
+        flag_unusual_subscription_claims(text) or
+        flag_miracle_product_claims(text) or
+        flag_celebrities_or_scandal(text) or
+        flag_scientific_breakthroughs(text)
     )
 
 # ---------- UI ----------
@@ -159,7 +180,7 @@ elif st.session_state.page == "classify":
             st.session_state.result = None
             st.session_state.probs = None
             st.session_state.hallucination_flag = None
-            st.rerun()  # <--- updated for latest Streamlit
+            st.rerun()
 
     with col_run:
         if st.button("Run Classification", type="primary", use_container_width=True):
