@@ -1,6 +1,7 @@
 import streamlit as st
 from transformers import pipeline
 from llmhelper import explain_fake_news, fact_check
+import re   
 
 # ---------- MODEL LOADING ----------
 @st.cache_resource(show_spinner=False)
