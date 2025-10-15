@@ -282,13 +282,13 @@ with st.expander("How to Use", expanded=False):
     - **URL** of a news article (e.g., `https://bbc.com/news/article`)
     
     **Ensemble Analysis Pipeline:**
-    ✅ Smart input detection (URL vs Text) with automatic article extraction
+    - Smart input detection (URL vs Text) with automatic article extraction
 
     - Multiple AI models working together using weighted voting
 
-    -Source credibility, advanced pattern detection, and LLM fact-checking
+    - Source credibility, advanced pattern detection, and LLM fact-checking
 
-    -Balanced and reliable final classification
+    - Balanced and reliable final classification
     
     **Models in Ensemble:**
     - Primary: Fake news detection (70% weight)
