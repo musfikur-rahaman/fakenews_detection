@@ -44,8 +44,9 @@ def hybrid_classify(text, classifier, source_url=None):
     halluc_flag = any(k in text.lower() for k in hallucination_keywords)
 
     if halluc_flag:
-        label = "FAKE"
-        score = max(score, 0.95)
+        score = min(score + 0.2, 0.95)
+        if score > 0.85:
+            label = "FAKE"
 
     # SOURCE VALIDATION
     source_reputation = None
@@ -57,30 +58,27 @@ def hybrid_classify(text, classifier, source_url=None):
             "emoji": emoji,
             "description": description
         }
-        
-        # Adjust score based on source reputation
+
         source_fake_score = get_source_score(rep_level)
-        
-        # If source is unreliable or satire, increase fake probability
+
+        # Adjust score based on source reputation
         if rep_level in ["Unreliable", "Satire"]:
-            label = "FAKE"
             score = max(score, 0.92)
+            label = "FAKE"
         elif rep_level == "Highly Reliable" and label == "REAL":
             score = max(score, 0.85)
-        
-        # Check for URL warnings
+
         source_warnings = analyze_url_characteristics(source_url)
 
-    # LLM fact-check (only for non-reliable sources or low confidence)
+    # LLM fact-check override (only if score is low AND source is not reliable)
     try:
-        # Only use LLM override if base model is uncertain OR source is questionable
-        if score < 0.7 or (source_reputation and source_reputation["level"] not in ["Highly Reliable", "Generally Reliable"]):
-            llm_label = fact_check(text[:1000])  # Limit text for API
+        if score < 0.7 and (not source_reputation or source_reputation["level"] not in ["Highly Reliable", "Generally Reliable"]):
+            llm_label = fact_check(text[:1000])
             if llm_label == "FAKE":
+                score = max(score, 0.85)
                 label = "FAKE"
-                score = max(score, 0.85)  # Reduced from 0.9
-    except Exception as e:
-        pass  # Silently fail instead of showing warning
+    except Exception:
+        pass  # Silently fail
 
     return label, score, halluc_flag, source_reputation, source_warnings
 
