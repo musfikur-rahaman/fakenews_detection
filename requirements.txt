@@ -1,18 +1,19 @@
 # Core
-streamlit==1.27.1
+streamlit
 requests
 beautifulsoup4
 python-dotenv
 
 # Transformers / Hugging Face (CPU-only)
-transformers==4.33.1
-torch==2.2.0+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
-sentence-transformers==2.2.2
-accelerate==2.3.2
+transformers
+torch
+sentence-transformers
+accelerate
 
 # Haystack (CPU-compatible)
-farm-haystack==1.18.1
+farm-haystack
 
 # LangChain
-langchain==0.1.17
-langchain-groq==0.0.5
+langchain
+langchain-groq
+
