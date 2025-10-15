@@ -231,7 +231,7 @@ with open("style.css") as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 # ---------- PAGE SETUP ----------
-st.set_page_config(page_title="Fake News Detector", layout="wide", page_icon="🔍")
+st.set_page_config(page_title="Fake News Detector", layout="wide", page_icon="")
 
 # ---------- SESSION STATE ----------
 if "user_input" not in st.session_state: 
