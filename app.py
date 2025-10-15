@@ -30,6 +30,34 @@ def hybrid_classify(text, classifier, source_url=None):
     label = map_label(result['label'])
     score = result['score']
 
+    # SOURCE VALIDATION FIRST (to give it priority)
+    source_reputation = None
+    source_warnings = []
+    highly_reliable_source = False
+    
+    if source_url and source_url.strip():
+        rep_level, emoji, description = check_source_reputation(source_url)
+        source_reputation = {
+            "level": rep_level,
+            "emoji": emoji,
+            "description": description
+        }
+
+        source_fake_score = get_source_score(rep_level)
+        
+        # Check if source is highly reliable
+        if rep_level in ["Highly Reliable", "Generally Reliable"]:
+            highly_reliable_source = True
+
+        # Adjust score based on source reputation
+        if rep_level in ["Unreliable", "Satire"]:
+            score = max(score, 0.92)
+            label = "FAKE"
+        elif rep_level == "Highly Reliable" and label == "REAL":
+            score = max(score, 0.85)
+
+        source_warnings = analyze_url_characteristics(source_url)
+
     # Expanded hallucination keywords
     hallucination_keywords = [
         "microchip", "tracking", "cover-up", "hoax", "alien",
@@ -43,36 +71,15 @@ def hybrid_classify(text, classifier, source_url=None):
     ]
     halluc_flag = any(k in text.lower() for k in hallucination_keywords)
 
-    if halluc_flag:
+    # Only apply hallucination boost if NOT from a highly reliable source
+    if halluc_flag and not highly_reliable_source:
         score = min(score + 0.2, 0.95)
         if score > 0.85:
             label = "FAKE"
 
-    # SOURCE VALIDATION
-    source_reputation = None
-    source_warnings = []
-    if source_url and source_url.strip():
-        rep_level, emoji, description = check_source_reputation(source_url)
-        source_reputation = {
-            "level": rep_level,
-            "emoji": emoji,
-            "description": description
-        }
-
-        source_fake_score = get_source_score(rep_level)
-
-        # Adjust score based on source reputation
-        if rep_level in ["Unreliable", "Satire"]:
-            score = max(score, 0.92)
-            label = "FAKE"
-        elif rep_level == "Highly Reliable" and label == "REAL":
-            score = max(score, 0.85)
-
-        source_warnings = analyze_url_characteristics(source_url)
-
-    # LLM fact-check override (only if score is low AND source is not reliable)
+    # LLM fact-check override - SKIP for highly reliable sources
     try:
-        if score < 0.7 and (not source_reputation or source_reputation["level"] not in ["Highly Reliable", "Generally Reliable"]):
+        if not highly_reliable_source and score < 0.7 and (not source_reputation or source_reputation["level"] not in ["Highly Reliable", "Generally Reliable"]):
             llm_label = fact_check(text[:1000])
             if llm_label == "FAKE":
                 score = max(score, 0.85)
