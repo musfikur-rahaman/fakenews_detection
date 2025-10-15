@@ -528,7 +528,7 @@ Built with <strong>Streamlit</strong> • <strong>Ensemble AI Models</strong> �
 
 <strong>🔬 Pipeline:</strong> Smart input detection (URL vs Text), Automatic article extraction, Multiple AI model ensemble voting, Balanced credibility analysis, Pattern detection, LLM fact-checking, Confidence calibration, Manual correction & learning.<br>
 
-<strong>🤖 Models:</strong> mrm8488/bert-tiny-finetuned-fake-news-detection (70% weight), DistilBERT Sentiment (30% weight), LLaMA 4 Scout (Verification).
+<strong>🤖 Models:</strong> mrm8488/bert-tiny-finetuned-fake-news-detection, DistilBERT Sentiment, LLaMA 4 Scout.
 
 </div>
 """, unsafe_allow_html=True)
