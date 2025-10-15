@@ -3,9 +3,10 @@ transformers
 torch
 python-dotenv
 requests
+langchain
 langchain-groq
 beautifulsoup4
 sentence-transformers
-farm-haystack
+farm-haystack[inference]
 accelerate
-bitsandbytes
+bitsandbytes==0.43.2
