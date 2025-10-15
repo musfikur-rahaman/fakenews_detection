@@ -520,24 +520,15 @@ if st.session_state.history:
 
             st.markdown("</div>", unsafe_allow_html=True)
 
-# ---------- FOOTER ----------
 st.markdown("---")
 st.markdown("""
-<div class='footer'>
-Built with <strong>Streamlit</strong> • <strong>Ensemble AI Models</strong> • <strong>Balanced Detection</strong><br><br>
-<strong>🔬 Ensemble Analysis Pipeline:</strong><br>
-1️⃣ Smart input detection (URL vs Text)<br>
-2️⃣ Automatic article extraction from URLs<br>
-3️⃣ **Multiple AI models ensemble voting**<br>
-4️⃣ Balanced source credibility analysis<br>
-5️⃣ Advanced pattern detection<br>
-6️⃣ LLM fact-checking verification<br>
-7️⃣ Confidence calibration<br>
-8️⃣ Manual correction & learning<br>
-<br>
-<strong>🤖 Ensemble Models:</strong><br>
-• mrm8488/bert-tiny-finetuned-fake-news-detection (Primary - 70% weight)<br>
-• DistilBERT Sentiment (Fallback - 30% weight)<br>
-• LLaMA 4 Scout (Verification)
+<div class='footer' style='font-size: 0.9em; line-height: 1.3em;'>
+
+Built with <strong>Streamlit</strong> • <strong>Ensemble AI Models</strong> • <strong>Balanced Detection</strong><br>
+
+<strong>🔬 Pipeline:</strong> Smart input detection (URL vs Text), Automatic article extraction, Multiple AI model ensemble voting, Balanced credibility analysis, Pattern detection, LLM fact-checking, Confidence calibration, Manual correction & learning.<br>
+
+<strong>🤖 Models:</strong> mrm8488/bert-tiny-finetuned-fake-news-detection (70% weight), DistilBERT Sentiment (30% weight), LLaMA 4 Scout (Verification).
+
 </div>
 """, unsafe_allow_html=True)
