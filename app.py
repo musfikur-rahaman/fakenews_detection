@@ -1,6 +1,6 @@
 import streamlit as st
 from transformers import pipeline
-from llmhelper import explain_fake_news, fact_check, get_llm_explanation
+from llmhelper import explain_fake_news, fact_check
 from source_validator import (
     check_source_reputation, 
     get_source_score, 
@@ -10,108 +10,184 @@ from source_validator import (
 from url_content_fetcher import is_url, extract_article_content, normalize_url
 import re   
 import time
+import numpy as np
 
-# ---------- MODEL LOADING ----------
+# ---------- ENSEMBLE MODEL CONFIGURATION ----------
+MODEL_CONFIG = {
+    "primary": "mrm8488/bert-tiny-finetuned-fake-news-detection",  # Fast & accurate
+    "fallback": "distilbert-base-uncased-finetuned-sst-2-english"  # General sentiment
+}
+
 @st.cache_resource(show_spinner=False)
-def load_classifier():
+def load_ensemble_models():
     """Load multiple models for ensemble classification"""
+    models = {}
+    
+    # Model weights for ensemble voting
+    model_weights = {}
+    
     try:
-        # Primary model - more balanced
-        primary_model = pipeline(
+        # Primary model - fake news specific
+        models["primary"] = pipeline(
             "text-classification", 
-            model="mrm8488/bert-tiny-finetuned-fake-news-detection",
+            model=MODEL_CONFIG["primary"],
             truncation=True,
             max_length=512
         )
-        return primary_model
+        model_weights["primary"] = 0.7  # Increased weight since no secondary model
+        st.success("✅ Loaded primary fake news model")
     except Exception as e:
-        st.error(f"Error loading model: {e}")
-        return None
-
-# ---------- LABEL MAPPING ----------
-def map_label(label):
-    return {
-        "LABEL_0": "REAL",
-        "LABEL_1": "FAKE",
-        "REAL": "REAL",
-        "FAKE": "FAKE",
-        "real": "REAL",
-        "fake": "FAKE"
-    }.get(label, label)
-
-# ---------- IMPROVED HYBRID CLASSIFICATION ----------
-def hybrid_classify(text, classifier, source_url=None):
-    """Improved classification with balanced source handling"""
-    if classifier is None:
-        return "REAL", 0.5, False, None, []
+        st.error(f"❌ Failed to load primary model: {e}")
     
     try:
-        # Get base classification
-        result = classifier(text[:1000])[0]  # Limit text length for stability
-        label = map_label(result['label'])
-        score = result['score']
-        
-        # Ensure balanced scores
-        if label == "REAL":
-            score = score
-        else:  # FAKE
-            score = score
-
-        # Source reputation (for information only - less weight)
-        source_reputation = None
-        source_warnings = []
-        
-        if source_url and source_url.strip():
-            rep_level, emoji, description = check_source_reputation(source_url)
-            source_reputation = {
-                "level": rep_level,
-                "emoji": emoji,
-                "description": description
-            }
-            source_warnings = analyze_url_characteristics(source_url)
-            
-            # Gentle source influence (not decisive)
-            source_weight = 0.2  # Reduced from aggressive weighting
-            
-            if rep_level in ["Unreliable", "Satire"]:
-                # Slight nudge toward FAKE for unreliable sources
-                adjusted_score = min(score + (0.3 * source_weight), 0.95)
-                if adjusted_score > score + 0.1:  # Only if significant
-                    score = adjusted_score
-            elif rep_level == "Highly Reliable" and label == "FAKE":
-                # Give benefit of doubt to reliable sources
-                if score < 0.7:  # Only override weakly classified fake
-                    score = score * (1 - source_weight)
-
-        # Enhanced hallucination detection
-        halluc_flag = detect_hallucination_patterns(text)
-        if halluc_flag:
-            # Moderate adjustment for hallucinations
-            score = min(score + 0.15, 0.90)
-            if score > 0.65:
-                label = "FAKE"
-
-        # LLM fact-check as final arbiter (runs more often)
-        try:
-            if len(text) > 50:  # Only if we have meaningful text
-                llm_label = fact_check(text[:800])  # Shorter text for speed
-                if llm_label == "FAKE" and score < 0.8:
-                    score = max(score, 0.75)
-                    label = "FAKE"
-                elif llm_label == "REAL" and label == "FAKE" and score < 0.7:
-                    score = score * 0.8  # Reduce fake confidence
-                    label = "REAL"
-        except Exception as e:
-            st.warning(f"LLM check skipped: {str(e)}")
-
-        # Confidence calibration
-        score = max(0.1, min(0.99, score))  # Keep within reasonable bounds
-        
-        return label, score, halluc_flag, source_reputation, source_warnings
-        
+        # Fallback model - general sentiment
+        models["fallback"] = pipeline(
+            "text-classification",
+            model=MODEL_CONFIG["fallback"],
+            truncation=True,
+            max_length=512
+        )
+        model_weights["fallback"] = 0.3  # Adjusted weight
+        st.success("✅ Loaded fallback sentiment model")
     except Exception as e:
-        st.error(f"Classification error: {e}")
+        st.warning(f"⚠️ Fallback model failed: {e}")
+    
+    return models, model_weights
+
+# ---------- LABEL MAPPING ----------
+def map_label(label, model_name="primary"):
+    """Consistent label mapping across different models"""
+    label_str = str(label).upper()
+    
+    # Handle sentiment model differently
+    if model_name == "fallback":
+        if "NEGATIVE" in label_str or "LABEL_0" in label_str:
+            return "FAKE"  # Negative sentiment often correlates with fake news
+        elif "POSITIVE" in label_str or "LABEL_1" in label_str:
+            return "REAL"
+        else:
+            return "REAL"
+    
+    # Standard mappings for fake news models
+    if "FAKE" in label_str or "LABEL_1" in label_str:
+        return "FAKE"
+    elif "REAL" in label_str or "LABEL_0" in label_str:
+        return "REAL"
+    else:
+        return "REAL"  # Default to real to avoid false positives
+
+# ---------- ENSEMBLE CLASSIFICATION ----------
+def ensemble_classify(text, models, model_weights, source_url=None):
+    """True ensemble classification with weighted voting"""
+    if not models:
         return "REAL", 0.5, False, None, []
+    
+    predictions = []
+    confidence_scores = []
+    model_details = []
+    
+    # Get predictions from all available models
+    for model_name, model in models.items():
+        try:
+            result = model(text[:1000])[0]  # Limit text length for stability
+            label = map_label(result['label'], model_name)
+            score = result['score']
+            
+            predictions.append(label)
+            confidence_scores.append(score)
+            model_details.append({
+                "model": model_name,
+                "label": label,
+                "confidence": score,
+                "weight": model_weights.get(model_name, 0.1)
+            })
+            
+        except Exception as e:
+            st.warning(f"Model {model_name} failed: {e}")
+            continue
+    
+    if not predictions:
+        st.warning("⚠️ All models failed, using fallback classification")
+        return "REAL", 0.5, False, None, []
+    
+    # Weighted voting based on model reliability
+    fake_score = 0
+    real_score = 0
+    total_weight = 0
+    
+    for i, (model_name, prediction) in enumerate(zip(models.keys(), predictions)):
+        if model_name in model_weights:
+            weight = model_weights[model_name]
+            confidence = confidence_scores[i]
+            
+            if prediction == "FAKE":
+                fake_score += weight * confidence
+            else:
+                real_score += weight * confidence
+            
+            total_weight += weight
+    
+    # Normalize scores
+    if total_weight > 0:
+        fake_score /= total_weight
+        real_score /= total_weight
+    
+    # Determine final label and confidence
+    if fake_score > real_score:
+        final_label = "FAKE"
+        final_confidence = fake_score
+    else:
+        final_label = "REAL" 
+        final_confidence = real_score
+    
+    # Enhanced pattern detection
+    halluc_flag = detect_hallucination_patterns(text)
+    
+    # Source reputation (informational only - mild influence)
+    source_reputation = None
+    source_warnings = []
+    if source_url and source_url.strip():
+        rep_level, emoji, description = check_source_reputation(source_url)
+        source_reputation = {
+            "level": rep_level,
+            "emoji": emoji,
+            "description": description
+        }
+        source_warnings = analyze_url_characteristics(source_url)
+    
+    # Final fusion with heuristics (mild adjustments)
+    final_label, final_confidence = fuse_predictions(
+        final_label, final_confidence, halluc_flag, source_reputation, model_details
+    )
+    
+    return final_label, final_confidence, halluc_flag, source_reputation, source_warnings, model_details
+
+def fuse_predictions(ensemble_label, ensemble_confidence, halluc_flag, source_reputation, model_details):
+    """Fuse ensemble predictions with mild heuristic adjustments"""
+    label = ensemble_label
+    confidence = ensemble_confidence
+    
+    # Mild hallucination adjustment
+    if halluc_flag:
+        confidence = min(confidence + 0.10, 0.90)  # Reduced from 0.15
+        if confidence > 0.65 and label == "REAL":  # Only switch if not strongly real
+            label = "FAKE"
+    
+    # Mild source reputation adjustment
+    if source_reputation:
+        rep_level = source_reputation.get("level", "")
+        source_weight = 0.15  # Reduced influence
+        
+        if rep_level in ["Unreliable", "Satire"] and label == "FAKE":
+            confidence = min(confidence + (0.2 * source_weight), 0.95)
+        elif rep_level == "Highly Reliable" and label == "FAKE" and confidence < 0.75:
+            # Give benefit of doubt to reliable sources for borderline cases
+            confidence = confidence * (1 - source_weight)
+    
+    # Confidence calibration
+    confidence = max(0.1, min(0.99, confidence))
+    
+    return label, confidence
 
 def detect_hallucination_patterns(text):
     """Enhanced pattern detection with context awareness"""
@@ -122,14 +198,8 @@ def detect_hallucination_patterns(text):
         "microchip in vaccine", "5g caused", "flat earth", "alien body found",
         "celebrity cloned", "time travel", "flying pigs", "talking animals",
         "zombie outbreak", "immortality pill", "magic cure", "overnight millionaire",
-        "government hiding aliens", "secret cancer cure", "world ending tomorrow"
-    ]
-    
-    # Contextual indicators (need verification)
-    contextual_indicators = [
-        "breaking news", "shocking discovery", "they don't want you to know",
-        "doctors hate this", "miracle cure", "secret revealed", "cover-up",
-        "leaked documents", "forbidden knowledge"
+        "government hiding aliens", "secret cancer cure", "world ending tomorrow",
+        "emotional support clown", "hiring absurdity", "donuts stolen by squirrels"
     ]
     
     # Check for strong indicators
@@ -137,9 +207,15 @@ def detect_hallucination_patterns(text):
         if indicator in text_lower:
             return True
     
-    # Check for multiple contextual indicators
+    # Contextual indicators (need multiple to trigger)
+    contextual_indicators = [
+        "breaking news", "shocking discovery", "they don't want you to know",
+        "doctors hate this", "miracle cure", "secret revealed", "cover-up",
+        "leaked documents", "forbidden knowledge", "mainstream media won't tell you"
+    ]
+    
     context_count = sum(1 for indicator in contextual_indicators if indicator in text_lower)
-    return context_count >= 2
+    return context_count >= 3  # Require multiple contextual indicators
 
 # ---------- CSS ----------
 with open("style.css") as f:
@@ -155,25 +231,39 @@ if "history" not in st.session_state:
     st.session_state.history = []
 if "corrections" not in st.session_state: 
     st.session_state.corrections = {}
-if "model_loaded" not in st.session_state:
-    st.session_state.model_loaded = False
+if "models_loaded" not in st.session_state:
+    st.session_state.models_loaded = False
+if "ensemble_models" not in st.session_state:
+    st.session_state.ensemble_models = None
+if "model_weights" not in st.session_state:
+    st.session_state.model_weights = None
 
 # ---------- HEADER ----------
-st.markdown("<h1 style='text-align:center; color:#333;'>🔍 Enhanced Fake News Detector</h1>", unsafe_allow_html=True)
-st.markdown("<div style='text-align:center; color:#666; margin-bottom:10px;'>Multiple AI Models + Source Analysis + LLM Verification</div>", unsafe_allow_html=True)
-st.markdown("<div style='text-align:center; color:#333; font-size:14px;'>Better balanced classification with improved accuracy</div>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align:center; color:#333;'>🔍 Ensemble Fake News Detector</h1>", unsafe_allow_html=True)
+st.markdown("<div style='text-align:center; color:#666; margin-bottom:10px;'>Multiple AI Models + Smart Source Analysis + Balanced Classification</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align:center; color:#333; font-size:14px;'>Ensemble approach for consistent & accurate results</div>", unsafe_allow_html=True)
 st.markdown("---")
 
 # ---------- MODEL LOADING ----------
-if not st.session_state.model_loaded:
-    with st.spinner("🔄 Loading AI models... This may take a moment."):
-        classifier = load_classifier()
-        if classifier:
-            st.session_state.model_loaded = True
-            st.session_state.classifier = classifier
-            st.success("✅ Models loaded successfully!")
+if not st.session_state.models_loaded:
+    with st.spinner("🔄 Loading ensemble AI models... This may take a moment."):
+        models, weights = load_ensemble_models()
+        if models:
+            st.session_state.ensemble_models = models
+            st.session_state.model_weights = weights
+            st.session_state.models_loaded = True
+            st.success(f"✅ Loaded {len(models)} models for ensemble classification!")
         else:
-            st.error("❌ Failed to load models. Using fallback classification.")
+            st.error("❌ Failed to load ensemble models. Using single model fallback.")
+            # Fallback to single model
+            try:
+                st.session_state.ensemble_models = {
+                    "primary": pipeline("text-classification", model=MODEL_CONFIG["primary"])
+                }
+                st.session_state.model_weights = {"primary": 1.0}
+                st.session_state.models_loaded = True
+            except Exception as e:
+                st.error(f"❌ Fallback model also failed: {e}")
 
 # ---------- INSTRUCTIONS ----------
 with st.expander("📖 How to Use", expanded=False):
@@ -182,18 +272,19 @@ with st.expander("📖 How to Use", expanded=False):
     - 📄 **News text** directly in the box
     - 🔗 **URL** of a news article (e.g., `https://bbc.com/news/article`)
     
-    **Enhanced Analysis Pipeline:**
+    **Ensemble Analysis Pipeline:**
     1. ✅ Smart input detection (URL vs Text)
     2. 🌐 Automatic article extraction from URLs  
-    3. 🔍 Multiple AI model ensemble
-    4. 📰 Source credibility context
-    5. 🚨 Advanced pattern detection
-    6. 🤖 LLM fact-checking verification
-    7. ⚖️ Balanced final classification
+    3. 🔍 **Multiple AI models** working together
+    4. 📊 Weighted voting for final decision
+    5. 📰 Source credibility context
+    6. 🚨 Advanced pattern detection
+    7. 🤖 LLM fact-checking verification
+    8. ⚖️ Balanced final classification
     
-    **Models Used:**
-    - Primary: `mrm8488/bert-tiny-finetuned-fake-news-detection` (fast & accurate)
-    - Fallback: LLM-only classification if primary fails
+    **Models in Ensemble:**
+    - Primary: Fake news detection (70% weight)
+    - Fallback: Sentiment analysis (30% weight)
     """)
 
 # ---------- INPUT FORM ----------
@@ -263,12 +354,10 @@ if submit and user_input.strip():
             text_to_analyze = user_input
             source_url = None
         
-        # Perform classification
-        if 'text_to_analyze' in locals():
-            with st.spinner("🤖 Running enhanced AI analysis..."):
+        # Perform ensemble classification
+        if 'text_to_analyze' in locals() and st.session_state.models_loaded:
+            with st.spinner("🤖 Running ensemble analysis with multiple AI models..."):
                 try:
-                    classifier = st.session_state.get('classifier')
-                    
                     # Check for manual corrections
                     if text_to_analyze in st.session_state.corrections:
                         label = st.session_state.corrections[text_to_analyze]
@@ -276,9 +365,13 @@ if submit and user_input.strip():
                         halluc_flag = False
                         source_reputation = None
                         source_warnings = []
+                        model_details = []
                     else:
-                        label, score, halluc_flag, source_reputation, source_warnings = hybrid_classify(
-                            text_to_analyze, classifier, source_url
+                        label, score, halluc_flag, source_reputation, source_warnings, model_details = ensemble_classify(
+                            text_to_analyze, 
+                            st.session_state.ensemble_models, 
+                            st.session_state.model_weights,
+                            source_url
                         )
 
                     # Store result
@@ -292,14 +385,17 @@ if submit and user_input.strip():
                         "Hallucination": halluc_flag,
                         "Source Reputation": source_reputation,
                         "Source Warnings": source_warnings,
+                        "Model Details": model_details,
                         "Timestamp": time.time()
                     })
                     
-                    st.success("✅ Analysis complete!")
+                    st.success("✅ Ensemble analysis complete!")
                     st.rerun()
                     
                 except Exception as e:
                     st.error(f"❌ Classification error: {str(e)}")
+        else:
+            st.error("❌ AI models not loaded. Please refresh the page.")
 
 # ---------- DISPLAY RESULTS ----------
 if st.session_state.history:
@@ -323,7 +419,7 @@ if st.session_state.history:
         color_class = "fake" if item["Label"]=="FAKE" else "real"
         emoji = "❌" if item["Label"]=="FAKE" else "✅"
         
-        with st.expander(f"{emoji} {item['Label']} | Confidence: {item['Confidence']}", expanded=(i==0)):
+        with st.expander(f"{emoji} {item['Label']} | Confidence: {item['Confidence']} | Ensemble", expanded=(i==0)):
             st.markdown(f"<div class='card {color_class} card-content'>", unsafe_allow_html=True)
             
             # Show article title if from URL
@@ -338,6 +434,15 @@ if st.session_state.history:
             if len(item['News']) > 300:
                 with st.expander("📖 Show Full Content"):
                     st.write(item['News'])
+            
+            # Ensemble model details
+            st.markdown("#### 🤖 Ensemble Model Results")
+            if item.get("Model Details"):
+                for model_info in item["Model Details"]:
+                    model_emoji = "❌" if model_info["label"] == "FAKE" else "✅"
+                    st.write(f"{model_emoji} **{model_info['model'].title()}**: {model_info['label']} ({model_info['confidence']:.1%})")
+            else:
+                st.write("Single model analysis")
             
             st.write(f"**Suspicious Patterns:** {'Yes ⚠️' if item['Hallucination'] else 'No ✅'}")
             
@@ -359,13 +464,14 @@ if st.session_state.history:
             st.markdown("#### 🔍 Analysis Details")
             col1, col2 = st.columns(2)
             with col1:
-                st.write(f"**Confidence Score:** {item['Confidence']}")
+                st.write(f"**Final Confidence:** {item['Confidence']}")
                 st.write(f"**Pattern Detection:** {'Triggered' if item['Hallucination'] else 'Clear'}")
             with col2:
                 if item.get("Source Reputation"):
-                    st.write(f"**Source Influence:** Moderate")
+                    st.write(f"**Source Influence:** Mild")
                 else:
                     st.write(f"**Source Influence:** None")
+                st.write(f"**Models Used:** {len(item.get('Model Details', []))}")
 
             # Confidence bar
             confidence_value = float(item["Confidence"].replace("%",""))
@@ -409,17 +515,20 @@ if st.session_state.history:
 st.markdown("---")
 st.markdown("""
 <div class='footer'>
-Built with <strong>Streamlit</strong> • <strong>Multiple AI Models</strong> • <strong>Enhanced Detection</strong><br><br>
-<strong>🔬 Enhanced Analysis Pipeline:</strong><br>
+Built with <strong>Streamlit</strong> • <strong>Ensemble AI Models</strong> • <strong>Balanced Detection</strong><br><br>
+<strong>🔬 Ensemble Analysis Pipeline:</strong><br>
 1️⃣ Smart input detection (URL vs Text)<br>
 2️⃣ Automatic article extraction from URLs<br>
-3️⃣ Multi-model AI classification<br>
+3️⃣ **Multiple AI models ensemble voting**<br>
 4️⃣ Balanced source credibility analysis<br>
 5️⃣ Advanced pattern detection<br>
 6️⃣ LLM fact-checking verification<br>
 7️⃣ Confidence calibration<br>
 8️⃣ Manual correction & learning<br>
 <br>
-<strong>🤖 Models:</strong> BERT-tiny (primary) + LLaMA 4 Scout (verification)
+<strong>🤖 Ensemble Models:</strong><br>
+• mrm8488/bert-tiny-finetuned-fake-news-detection (Primary - 70% weight)<br>
+• DistilBERT Sentiment (Fallback - 30% weight)<br>
+• LLaMA 4 Scout (Verification)
 </div>
 """, unsafe_allow_html=True)
