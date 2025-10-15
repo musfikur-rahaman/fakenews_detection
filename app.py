@@ -248,7 +248,7 @@ if "model_weights" not in st.session_state:
     st.session_state.model_weights = None
 
 # ---------- HEADER ----------
-st.markdown("<h1 style='text-align:center; color:#333;'>🔍 Ensemble Fake News Detector</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align:center; color:#333;'>Fake News Detector</h1>", unsafe_allow_html=True)
 st.markdown("<div style='text-align:center; color:#666; margin-bottom:10px;'>Multiple AI Models + Smart Source Analysis + Balanced Classification</div>", unsafe_allow_html=True)
 st.markdown("<div style='text-align:center; color:#333; font-size:14px;'>Ensemble approach for consistent & accurate results</div>", unsafe_allow_html=True)
 st.markdown("---")
@@ -275,7 +275,7 @@ if not st.session_state.models_loaded:
                 st.error(f"❌ Fallback model also failed: {e}")
 
 # ---------- INSTRUCTIONS ----------
-with st.expander("📖 How to Use", expanded=False):
+with st.expander("How to Use", expanded=False):
     st.markdown("""
     **Enter either:**
     - 📄 **News text** directly in the box
@@ -298,7 +298,7 @@ with st.expander("📖 How to Use", expanded=False):
 
 # ---------- INPUT FORM ----------
 with st.form(key="news_form"):
-    st.subheader("📝 Enter News Text or URL")
+    st.subheader("Enter News Text or URL")
     user_input = st.text_area(
         "Paste news article or enter URL:",
         height=180,
