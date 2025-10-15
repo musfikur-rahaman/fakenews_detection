@@ -278,17 +278,17 @@ if not st.session_state.models_loaded:
 with st.expander("How to Use", expanded=False):
     st.markdown("""
     **Enter either:**
-    - 📄 **News text** directly in the box
-    - 🔗 **URL** of a news article (e.g., `https://bbc.com/news/article`)
+    - **News text** directly in the box
+    - **URL** of a news article (e.g., `https://bbc.com/news/article`)
     
     **Ensemble Analysis Pipeline:**
     ✅ Smart input detection (URL vs Text) with automatic article extraction
 
-    🔍 Multiple AI models working together using weighted voting
+    - Multiple AI models working together using weighted voting
 
-    📰 Source credibility, advanced pattern detection, and LLM fact-checking
+    -Source credibility, advanced pattern detection, and LLM fact-checking
 
-    ⚖️ Balanced and reliable final classification
+    -Balanced and reliable final classification
     
     **Models in Ensemble:**
     - Primary: Fake news detection (70% weight)
