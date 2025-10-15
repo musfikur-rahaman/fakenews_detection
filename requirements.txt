@@ -5,3 +5,7 @@ python-dotenv
 requests
 langchain-groq
 beautifulsoup4
+sentence-transformers
+farm-haystack
+accelerate
+bitsandbytes

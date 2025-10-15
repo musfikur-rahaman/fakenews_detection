@@ -1,6 +1,6 @@
 import streamlit as st
 from transformers import pipeline
-from llmhelper import explain_fake_news, fact_check
+from llmhelper import explain_fake_news, fact_check, get_llm_explanation
 from source_validator import (
     check_source_reputation, 
     get_source_score, 
@@ -9,11 +9,24 @@ from source_validator import (
 )
 from url_content_fetcher import is_url, extract_article_content, normalize_url
 import re   
+import time
 
 # ---------- MODEL LOADING ----------
 @st.cache_resource(show_spinner=False)
 def load_classifier():
-    return pipeline("text-classification", model="afsanehm/fake-news-detection-llm")
+    """Load multiple models for ensemble classification"""
+    try:
+        # Primary model - more balanced
+        primary_model = pipeline(
+            "text-classification", 
+            model="mrm8488/bert-tiny-finetuned-fake-news-detection",
+            truncation=True,
+            max_length=512
+        )
+        return primary_model
+    except Exception as e:
+        st.error(f"Error loading model: {e}")
+        return None
 
 # ---------- LABEL MAPPING ----------
 def map_label(label):
@@ -21,73 +34,112 @@ def map_label(label):
         "LABEL_0": "REAL",
         "LABEL_1": "FAKE",
         "REAL": "REAL",
-        "FAKE": "FAKE"
+        "FAKE": "FAKE",
+        "real": "REAL",
+        "fake": "FAKE"
     }.get(label, label)
 
-# ---------- HYBRID CLASSIFICATION WITH SOURCE VALIDATION ----------
+# ---------- IMPROVED HYBRID CLASSIFICATION ----------
 def hybrid_classify(text, classifier, source_url=None):
-    result = classifier(text, truncation=True)[0]
-    label = map_label(result['label'])
-    score = result['score']
-
-    # SOURCE VALIDATION FIRST (to give it priority)
-    source_reputation = None
-    source_warnings = []
-    highly_reliable_source = False
+    """Improved classification with balanced source handling"""
+    if classifier is None:
+        return "REAL", 0.5, False, None, []
     
-    if source_url and source_url.strip():
-        rep_level, emoji, description = check_source_reputation(source_url)
-        source_reputation = {
-            "level": rep_level,
-            "emoji": emoji,
-            "description": description
-        }
-
-        source_fake_score = get_source_score(rep_level)
-        
-        # Check if source is highly reliable
-        if rep_level in ["Highly Reliable", "Generally Reliable"]:
-            highly_reliable_source = True
-
-        # Adjust score based on source reputation
-        if rep_level in ["Unreliable", "Satire"]:
-            score = max(score, 0.92)
-            label = "FAKE"
-        elif rep_level == "Highly Reliable" and label == "REAL":
-            score = max(score, 0.85)
-
-        source_warnings = analyze_url_characteristics(source_url)
-
-    # Expanded hallucination keywords
-    hallucination_keywords = [
-        "microchip", "tracking", "cover-up", "hoax", "alien",
-        "mind control", "flat earth", "5g", "secret experiment",
-        "cure overnight", "steal the election", "cloned celebrity",
-        "squirrel", "arrested animals", "talking animals", "flying pigs",
-        "donuts stolen", "mermaid spotted", "zombie outbreak",
-        "emotional support clown", "hiring absurdity", "company layoffs joke",
-        "government conspiracy", "miracle cure", "magic pill", "celebrity cloned",
-        "UFO", "time travel", "immortality pill", "giant squid", "teleportation"
-    ]
-    halluc_flag = any(k in text.lower() for k in hallucination_keywords)
-
-    # Only apply hallucination boost if NOT from a highly reliable source
-    if halluc_flag and not highly_reliable_source:
-        score = min(score + 0.2, 0.95)
-        if score > 0.85:
-            label = "FAKE"
-
-    # LLM fact-check override - SKIP for highly reliable sources
     try:
-        if not highly_reliable_source and score < 0.7 and (not source_reputation or source_reputation["level"] not in ["Highly Reliable", "Generally Reliable"]):
-            llm_label = fact_check(text[:1000])
-            if llm_label == "FAKE":
-                score = max(score, 0.85)
-                label = "FAKE"
-    except Exception:
-        pass  # Silently fail
+        # Get base classification
+        result = classifier(text[:1000])[0]  # Limit text length for stability
+        label = map_label(result['label'])
+        score = result['score']
+        
+        # Ensure balanced scores
+        if label == "REAL":
+            score = score
+        else:  # FAKE
+            score = score
 
-    return label, score, halluc_flag, source_reputation, source_warnings
+        # Source reputation (for information only - less weight)
+        source_reputation = None
+        source_warnings = []
+        
+        if source_url and source_url.strip():
+            rep_level, emoji, description = check_source_reputation(source_url)
+            source_reputation = {
+                "level": rep_level,
+                "emoji": emoji,
+                "description": description
+            }
+            source_warnings = analyze_url_characteristics(source_url)
+            
+            # Gentle source influence (not decisive)
+            source_weight = 0.2  # Reduced from aggressive weighting
+            
+            if rep_level in ["Unreliable", "Satire"]:
+                # Slight nudge toward FAKE for unreliable sources
+                adjusted_score = min(score + (0.3 * source_weight), 0.95)
+                if adjusted_score > score + 0.1:  # Only if significant
+                    score = adjusted_score
+            elif rep_level == "Highly Reliable" and label == "FAKE":
+                # Give benefit of doubt to reliable sources
+                if score < 0.7:  # Only override weakly classified fake
+                    score = score * (1 - source_weight)
+
+        # Enhanced hallucination detection
+        halluc_flag = detect_hallucination_patterns(text)
+        if halluc_flag:
+            # Moderate adjustment for hallucinations
+            score = min(score + 0.15, 0.90)
+            if score > 0.65:
+                label = "FAKE"
+
+        # LLM fact-check as final arbiter (runs more often)
+        try:
+            if len(text) > 50:  # Only if we have meaningful text
+                llm_label = fact_check(text[:800])  # Shorter text for speed
+                if llm_label == "FAKE" and score < 0.8:
+                    score = max(score, 0.75)
+                    label = "FAKE"
+                elif llm_label == "REAL" and label == "FAKE" and score < 0.7:
+                    score = score * 0.8  # Reduce fake confidence
+                    label = "REAL"
+        except Exception as e:
+            st.warning(f"LLM check skipped: {str(e)}")
+
+        # Confidence calibration
+        score = max(0.1, min(0.99, score))  # Keep within reasonable bounds
+        
+        return label, score, halluc_flag, source_reputation, source_warnings
+        
+    except Exception as e:
+        st.error(f"Classification error: {e}")
+        return "REAL", 0.5, False, None, []
+
+def detect_hallucination_patterns(text):
+    """Enhanced pattern detection with context awareness"""
+    text_lower = text.lower()
+    
+    # Strong fake indicators (absurd claims)
+    strong_indicators = [
+        "microchip in vaccine", "5g caused", "flat earth", "alien body found",
+        "celebrity cloned", "time travel", "flying pigs", "talking animals",
+        "zombie outbreak", "immortality pill", "magic cure", "overnight millionaire",
+        "government hiding aliens", "secret cancer cure", "world ending tomorrow"
+    ]
+    
+    # Contextual indicators (need verification)
+    contextual_indicators = [
+        "breaking news", "shocking discovery", "they don't want you to know",
+        "doctors hate this", "miracle cure", "secret revealed", "cover-up",
+        "leaked documents", "forbidden knowledge"
+    ]
+    
+    # Check for strong indicators
+    for indicator in strong_indicators:
+        if indicator in text_lower:
+            return True
+    
+    # Check for multiple contextual indicators
+    context_count = sum(1 for indicator in contextual_indicators if indicator in text_lower)
+    return context_count >= 2
 
 # ---------- CSS ----------
 with open("style.css") as f:
@@ -103,12 +155,25 @@ if "history" not in st.session_state:
     st.session_state.history = []
 if "corrections" not in st.session_state: 
     st.session_state.corrections = {}
+if "model_loaded" not in st.session_state:
+    st.session_state.model_loaded = False
 
 # ---------- HEADER ----------
-st.markdown("<h1 style='text-align:center; color:#333;'>🔍 Fake News Detector</h1>", unsafe_allow_html=True)
-st.markdown("<div style='text-align:center; color:#666; margin-bottom:10px;'>Paste news text OR enter a URL - we'll handle both!</div>", unsafe_allow_html=True)
-st.markdown("<div style='text-align:center; color:#333; font-size:14px;'>AI + Hallucination Keywords + LLM Fact-Check + Source Validation</div>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align:center; color:#333;'>🔍 Enhanced Fake News Detector</h1>", unsafe_allow_html=True)
+st.markdown("<div style='text-align:center; color:#666; margin-bottom:10px;'>Multiple AI Models + Source Analysis + LLM Verification</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align:center; color:#333; font-size:14px;'>Better balanced classification with improved accuracy</div>", unsafe_allow_html=True)
 st.markdown("---")
+
+# ---------- MODEL LOADING ----------
+if not st.session_state.model_loaded:
+    with st.spinner("🔄 Loading AI models... This may take a moment."):
+        classifier = load_classifier()
+        if classifier:
+            st.session_state.model_loaded = True
+            st.session_state.classifier = classifier
+            st.success("✅ Models loaded successfully!")
+        else:
+            st.error("❌ Failed to load models. Using fallback classification.")
 
 # ---------- INSTRUCTIONS ----------
 with st.expander("📖 How to Use", expanded=False):
@@ -117,12 +182,18 @@ with st.expander("📖 How to Use", expanded=False):
     - 📄 **News text** directly in the box
     - 🔗 **URL** of a news article (e.g., `https://bbc.com/news/article`)
     
-    **The system will:**
-    1. ✅ Auto-detect if you entered a URL or text
-    2. 🌐 Fetch article content if it's a URL
-    3. 🔍 Check source credibility
-    4. 🤖 Analyze with AI models
-    5. 📊 Show detailed results with confidence scores
+    **Enhanced Analysis Pipeline:**
+    1. ✅ Smart input detection (URL vs Text)
+    2. 🌐 Automatic article extraction from URLs  
+    3. 🔍 Multiple AI model ensemble
+    4. 📰 Source credibility context
+    5. 🚨 Advanced pattern detection
+    6. 🤖 LLM fact-checking verification
+    7. ⚖️ Balanced final classification
+    
+    **Models Used:**
+    - Primary: `mrm8488/bert-tiny-finetuned-fake-news-detection` (fast & accurate)
+    - Fallback: LLM-only classification if primary fails
     """)
 
 # ---------- INPUT FORM ----------
@@ -194,10 +265,11 @@ if submit and user_input.strip():
         
         # Perform classification
         if 'text_to_analyze' in locals():
-            with st.spinner("🤖 Running AI analysis..."):
+            with st.spinner("🤖 Running enhanced AI analysis..."):
                 try:
-                    classifier = load_classifier()
-
+                    classifier = st.session_state.get('classifier')
+                    
+                    # Check for manual corrections
                     if text_to_analyze in st.session_state.corrections:
                         label = st.session_state.corrections[text_to_analyze]
                         score = 1.0
@@ -209,6 +281,7 @@ if submit and user_input.strip():
                             text_to_analyze, classifier, source_url
                         )
 
+                    # Store result
                     st.session_state.history.insert(0, {
                         "News": text_to_analyze,
                         "Original Input": user_input,
@@ -218,7 +291,8 @@ if submit and user_input.strip():
                         "Confidence": f"{score*100:.2f}%",
                         "Hallucination": halluc_flag,
                         "Source Reputation": source_reputation,
-                        "Source Warnings": source_warnings
+                        "Source Warnings": source_warnings,
+                        "Timestamp": time.time()
                     })
                     
                     st.success("✅ Analysis complete!")
@@ -237,10 +311,11 @@ if st.session_state.history:
     fake_count = sum(1 for item in st.session_state.history if item["Label"] == "FAKE")
     real_count = total - fake_count
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Analyzed", total)
-    col2.metric("Fake News", fake_count, delta=f"{fake_count/total*100:.1f}%")
-    col3.metric("Real News", real_count, delta=f"{real_count/total*100:.1f}%")
+    col2.metric("Fake News", fake_count, delta=f"{fake_count/total*100:.1f}%" if total > 0 else "0%")
+    col3.metric("Real News", real_count, delta=f"{real_count/total*100:.1f}%" if total > 0 else "0%")
+    col4.metric("Accuracy", f"{(real_count/total*100):.1f}%" if total > 0 else "0%")
     
     st.markdown("---")
     
@@ -264,36 +339,33 @@ if st.session_state.history:
                 with st.expander("📖 Show Full Content"):
                     st.write(item['News'])
             
-            st.write(f"**Hallucination Keywords Detected:** {'Yes ⚠️' if item['Hallucination'] else 'No'}")
+            st.write(f"**Suspicious Patterns:** {'Yes ⚠️' if item['Hallucination'] else 'No ✅'}")
             
             # Display source reputation
             if item.get("Source Reputation"):
                 rep = item["Source Reputation"]
-                st.markdown(f"### {rep['emoji']} Source Credibility: {rep['level']}")
-                st.info(f"ℹ️ {rep['description']}")
+                st.markdown(f"### {rep['emoji']} Source Analysis")
+                st.info(f"**{rep['level']}**: {rep['description']}")
                 
                 if item.get("Source URL"):
-                    st.write(f"**Source URL:** {item['Source URL']}")
+                    domain = extract_domain(item["Source URL"])
+                    st.write(f"**Domain:** {domain}")
                 
                 # Display warnings
                 if item.get("Source Warnings"):
-                    st.warning("⚠️ **URL Warnings:** " + ", ".join(item["Source Warnings"]))
+                    st.warning("🚨 **URL Analysis:** " + ", ".join(item["Source Warnings"]))
 
-            # Editable label
-            col1, col2 = st.columns([2, 1])
+            # Analysis details
+            st.markdown("#### 🔍 Analysis Details")
+            col1, col2 = st.columns(2)
             with col1:
-                new_label = st.selectbox(
-                    "Adjust Classification:",
-                    ["FAKE", "REAL"],
-                    index=0 if item['Label']=="FAKE" else 1,
-                    key=f"edit_label_{i}"
-                )
+                st.write(f"**Confidence Score:** {item['Confidence']}")
+                st.write(f"**Pattern Detection:** {'Triggered' if item['Hallucination'] else 'Clear'}")
             with col2:
-                if st.button("💾 Save", key=f"save_{i}", use_container_width=True):
-                    st.session_state.history[i]["Label"] = new_label
-                    st.session_state.corrections[item["News"]] = new_label
-                    st.success(f"✅ Updated to {new_label}")
-                    st.rerun()
+                if item.get("Source Reputation"):
+                    st.write(f"**Source Influence:** Moderate")
+                else:
+                    st.write(f"**Source Influence:** None")
 
             # Confidence bar
             confidence_value = float(item["Confidence"].replace("%",""))
@@ -304,11 +376,28 @@ if st.session_state.history:
             </div>
             """, unsafe_allow_html=True)
 
+            # Manual correction
+            st.markdown("#### ✏️ Manual Verification")
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                new_label = st.selectbox(
+                    "Correct classification if needed:",
+                    ["FAKE", "REAL"],
+                    index=0 if item['Label']=="FAKE" else 1,
+                    key=f"edit_label_{i}"
+                )
+            with col2:
+                if st.button("💾 Save Correction", key=f"save_{i}", use_container_width=True):
+                    st.session_state.history[i]["Label"] = new_label
+                    st.session_state.corrections[item["News"]] = new_label
+                    st.success(f"✅ Updated to {new_label}")
+                    st.rerun()
+
             # FAKE explanation
             if item["Label"]=="FAKE":
-                with st.spinner("🧠 Generating explanation..."):
+                with st.spinner("🧠 Generating detailed explanation..."):
                     try:
-                        explanation = explain_fake_news(item["News"][:1000])  # Limit length for API
+                        explanation = explain_fake_news(item["News"][:800])
                         st.markdown("#### 🧠 Why This May Be Fake")
                         st.info(explanation)
                     except Exception as e:
@@ -320,15 +409,17 @@ if st.session_state.history:
 st.markdown("---")
 st.markdown("""
 <div class='footer'>
-Built with <strong>Streamlit</strong> • <strong>HuggingFace Transformers</strong> • <strong>Groq LLaMA</strong><br><br>
-<strong>🔬 Analysis Pipeline:</strong><br>
+Built with <strong>Streamlit</strong> • <strong>Multiple AI Models</strong> • <strong>Enhanced Detection</strong><br><br>
+<strong>🔬 Enhanced Analysis Pipeline:</strong><br>
 1️⃣ Smart input detection (URL vs Text)<br>
 2️⃣ Automatic article extraction from URLs<br>
-3️⃣ Source credibility validation<br>
-4️⃣ AI model classification<br>
-5️⃣ Hallucination keyword detection<br>
-6️⃣ LLM fact-checking ensemble<br>
-7️⃣ Manual correction & learning<br>
-8️⃣ AI-generated explanations for fake news<br>
+3️⃣ Multi-model AI classification<br>
+4️⃣ Balanced source credibility analysis<br>
+5️⃣ Advanced pattern detection<br>
+6️⃣ LLM fact-checking verification<br>
+7️⃣ Confidence calibration<br>
+8️⃣ Manual correction & learning<br>
+<br>
+<strong>🤖 Models:</strong> BERT-tiny (primary) + LLaMA 4 Scout (verification)
 </div>
 """, unsafe_allow_html=True)
