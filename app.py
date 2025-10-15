@@ -71,14 +71,16 @@ def hybrid_classify(text, classifier, source_url=None):
         # Check for URL warnings
         source_warnings = analyze_url_characteristics(source_url)
 
-    # LLM fact-check
+    # LLM fact-check (only for non-reliable sources or low confidence)
     try:
-        llm_label = fact_check(text)
-        if llm_label == "FAKE":
-            label = "FAKE"
-            score = max(score, 0.9)
+        # Only use LLM override if base model is uncertain OR source is questionable
+        if score < 0.7 or (source_reputation and source_reputation["level"] not in ["Highly Reliable", "Generally Reliable"]):
+            llm_label = fact_check(text[:1000])  # Limit text for API
+            if llm_label == "FAKE":
+                label = "FAKE"
+                score = max(score, 0.85)  # Reduced from 0.9
     except Exception as e:
-        st.warning(f"⚠️ LLM fact-check unavailable: {str(e)}")
+        pass  # Silently fail instead of showing warning
 
     return label, score, halluc_flag, source_reputation, source_warnings
 
