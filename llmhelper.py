@@ -1,6 +1,12 @@
 import os
 import streamlit as st
 from dotenv import load_dotenv
+
+# ⚡ Patch missing langchain.verbose to prevent ChatGroq errors
+import langchain
+if not hasattr(langchain, "verbose"):
+    langchain.verbose = False
+
 from langchain_groq import ChatGroq
 
 load_dotenv()
@@ -56,16 +62,13 @@ def fact_check(text):
         response = llm.invoke(prompt)
         label = response.content.strip().upper()
         
-        # More robust label parsing
         if "FAKE" in label:
             return "FAKE"
         elif "REAL" in label:
             return "REAL"
         else:
-            # Default to REAL if unclear to avoid false positives
-            return "REAL"
+            return "REAL"  # Default to REAL
     except Exception as e:
-        # Fallback to REAL on API errors to avoid false positives
         return "REAL"
 
 def get_llm_explanation(text, classification):
@@ -79,7 +82,7 @@ def get_llm_explanation(text, classification):
             "Explain why this news content appears to be REAL and credible.\n"
             "Consider:\n"
             "- Factual consistency\n"
-            -" Plausible claims with evidence\n"
+            "- Plausible claims with evidence\n"
             "- Professional tone and language\n"
             "- Lack of common fake news patterns\n\n"
             f"Content: {text[:800]}\n\n"
@@ -89,10 +92,9 @@ def get_llm_explanation(text, classification):
             response = llm.invoke(prompt)
             return response.content.strip()
         except Exception as e:
-            return f"This content appears legitimate based on AI analysis."
+            return "This content appears legitimate based on AI analysis."
 
 if __name__ == "__main__":
-    # Test samples
     fake_sample = "Breaking: NASA confirms aliens living among us disguised as squirrels!"
     real_sample = "The company announced quarterly earnings showing 5% growth in revenue."
     
