@@ -2,9 +2,10 @@ streamlit
 requests
 beautifulsoup4
 python-dotenv
-transformers
+transformers==4.33.1
 torch==2.2.0+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
-sentence-transformers
-accelerate
-farm-haystack
-bitsandbytes==0.43.2
+sentence-transformers==2.2.2
+accelerate==2.3.2
+farm-haystack==1.18.1
+langchain==0.1.17
+langchain-groq==0.0.5

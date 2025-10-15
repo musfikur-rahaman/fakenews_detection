@@ -19,40 +19,48 @@ MODEL_CONFIG = {
 }
 
 @st.cache_resource(show_spinner=False)
+@st.cache_resource(show_spinner=False)
 def load_ensemble_models():
-    """Load multiple models for ensemble classification"""
+    """Load CPU-friendly models for ensemble classification"""
+    from transformers import pipeline
+
     models = {}
-    
-    # Model weights for ensemble voting
     model_weights = {}
-    
+
+    # Use tiny, fast models suitable for CPU
+    MODEL_CONFIG = {
+        "primary": "mrm8488/bert-tiny-finetuned-fake-news-detection",  # Fake news
+        "fallback": "distilbert-base-uncased-finetuned-sst-2-english"   # Sentiment
+    }
+
     try:
-        # Primary model - fake news specific
         models["primary"] = pipeline(
-            "text-classification", 
+            "text-classification",
             model=MODEL_CONFIG["primary"],
+            device=-1,  # CPU
             truncation=True,
-            max_length=512
+            max_length=256  # smaller text length to reduce memory
         )
-        model_weights["primary"] = 0.7  # Increased weight since no secondary model
+        model_weights["primary"] = 0.7
         st.success("✅ Loaded primary fake news model")
     except Exception as e:
-        st.error(f"❌ Failed to load primary model: {e}")
-    
+        st.error(f"❌ Primary model failed to load: {e}")
+
     try:
-        # Fallback model - general sentiment
         models["fallback"] = pipeline(
             "text-classification",
             model=MODEL_CONFIG["fallback"],
+            device=-1,  # CPU
             truncation=True,
-            max_length=512
+            max_length=256
         )
-        model_weights["fallback"] = 0.3  # Adjusted weight
+        model_weights["fallback"] = 0.3
         st.success("✅ Loaded fallback sentiment model")
     except Exception as e:
         st.warning(f"⚠️ Fallback model failed: {e}")
-    
+
     return models, model_weights
+
 
 # ---------- LABEL MAPPING ----------
 def map_label(label, model_name="primary"):
