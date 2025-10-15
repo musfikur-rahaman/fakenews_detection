@@ -1,6 +1,6 @@
 import streamlit as st
 from transformers import pipeline
-from llmhelper import explain_fake_news, fact_check, get_llm_explanation
+from llmhelper import explain_fake_news
 from source_validator import (
     check_source_reputation, 
     get_source_score, 
