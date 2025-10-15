@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Fake News Detection - Project Tracker</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .demo-link {
+            display: inline-block;
+            margin-top: 15px;
+            padding: 12px 30px;
+            background: white;
+            color: #667eea;
+            text-decoration: none;
+            border-radius: 25px;
+            font-weight: bold;
+            transition: transform 0.3s;
+        }
+
+        .demo-link:hover {
+            transform: translateY(-3px);
+        }
+
+        nav {
+            background: #f8f9fa;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        nav button {
+            padding: 20px 30px;
+            background: none;
+            border: none;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border-bottom: 3px solid transparent;
+        }
+
+        nav button:hover {
+            background: #e9ecef;
+        }
+
+        nav button.active {
+            border-bottom-color: #667eea;
+            color: #667eea;
+            font-weight: bold;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.5s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .team-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .team-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 15px;
+            text-align: center;
+            transition: transform 0.3s;
+        }
+
+        .team-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .progress-section {
+            margin: 30px 0;
+        }
+
+        .progress-item {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            border-left: 4px solid #667eea;
+        }
+
+        .progress-item h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .task-list {
+            list-style: none;
+        }
+
+        .task-list li {
+            padding: 15px;
+            background: #f8f9fa;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .task-list input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .task-list li.completed {
+            background: #d4edda;
+            text-decoration: line-through;
+            opacity: 0.7;
+        }
+
+        .code-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .code-section h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .code-block {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            margin: 10px 0;
+        }
+
+        .add-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 0;
+            transition: transform 0.3s;
+        }
+
+        .add-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 600px;
+            width: 90%;
+        }
+
+        .modal-content input, .modal-content textarea {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+
+        .tech-stack {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .tech-item {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .timeline {
+            position: relative;
+            padding: 20px 0;
+        }
+
+        .timeline-item {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .timeline-item h4 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .export-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🛡️ AI Fake News Detection System</h1>
+            <p>Ensemble-driven platform for news credibility analysis</p>
+            <a href="https://fakenewsdetection-pvbvhamzrrrjswhhiirvrd.streamlit.app/" target="_blank" class="demo-link">View Live Demo →</a>
+        </header>
+
+        <nav>
+            <button class="nav-btn active" onclick="showTab('overview')">Overview</button>
+            <button class="nav-btn" onclick="showTab('team')">Team</button>
+            <button class="nav-btn" onclick="showTab('progress')">Progress</button>
+            <button class="nav-btn" onclick="showTab('tasks')">Tasks</button>
+            <button class="nav-btn" onclick="showTab('code')">Code Repository</button>
+            <button class="nav-btn" onclick="showTab('timeline')">Timeline</button>
+        </nav>
+
+        <div class="content">
+            <div id="overview" class="tab-content active">
+                <h2>Project Overview</h2>
+                <p style="margin: 20px 0; line-height: 1.8;">
+                    An ensemble-driven platform designed to identify, classify, and validate online news credibility using advanced Natural Language Processing (NLP) and Machine Learning (ML) techniques.
+                </p>
+
+                <div class="tech-stack">
+                    <div class="tech-item">
+                        <h3>Frontend</h3>
+                        <p>Streamlit + Custom CSS</p>
+                    </div>
+                    <div class="tech-item">
+                        <h3>AI Models</h3>
+                        <p>BERT + DistilBERT</p>
+                    </div>
+                    <div class="tech-item">
+                        <h3>LLM</h3>
+                        <p>Groq API + LLaMA 4</p>
+                    </div>
+                    <div class="tech-item">
+                        <h3>Backend</h3>
+                        <p>Supabase (Planned)</p>
+                    </div>
+                </div>
+
+                <div class="progress-section">
+                    <h3>Key Features</h3>
+                    <div class="progress-item">
+                        <h3>✅ Completed</h3>
+                        <ul>
+                            <li>Real-time news classification</li>
+                            <li>Ensemble AI model (BERT + DistilBERT)</li>
+                            <li>URL extraction and source validation</li>
+                            <li>Confidence scoring</li>
+                            <li>Manual correction feedback</li>
+                        </ul>
+                    </div>
+                    <div class="progress-item">
+                        <h3>🚧 In Development</h3>
+                        <ul>
+                            <li>Supabase integration</li>
+                            <li>User authentication system</li>
+                            <li>History tracking & persistence</li>
+                            <li>Adaptive model learning</li>
+                            <li>Admin dashboard</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div id="team" class="tab-content">
+                <h2>Team Members</h2>
+                <div class="team-grid">
+                    <div class="team-card">
+                        <h3>Musfikur Rahaman</h3>
+                        <p>Team Member</p>
+                    </div>
+                    <div class="team-card">
+                        <h3>T'avon Goodwin</h3>
+                        <p>Team Member</p>
+                    </div>
+                    <div class="team-card">
+                        <h3>Lindsey Carl</h3>
+                        <p>Team Member</p>
+                    </div>
+                    <div class="team-card">
+                        <h3>Shequila Sledge</h3>
+                        <p>Team Member</p>
+                    </div>
+                    <div class="team-card">
+                        <h3>Dalessandro Verdin-Mendez</h3>
+                        <p>Team Member</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="progress" class="tab-content">
+                <h2>Week 01 Progress Report</h2>
+                <button class="export-btn" onclick="exportProgress()">📥 Export Report</button>
+                
+                <div class="progress-section">
+                    <div class="progress-item">
+                        <h3>Core Application Development</h3>
+                        <p>Built Streamlit-based web interface with responsive design and interactive components.</p>
+                    </div>
+                    <div class="progress-item">
+                        <h3>AI Model Integration</h3>
+                        <p>Integrated Ensemble AI model (BERT + DistilBERT) for improved classification precision.</p>
+                    </div>
+                    <div class="progress-item">
+                        <h3>Source Validation</h3>
+                        <p>Implemented URL extraction and source validation using domain reputation databases.</p>
+                    </div>
+                    <div class="progress-item">
+                        <h3>Real-time Classification</h3>
+                        <p>Developed real-time classification with confidence scoring and interpretability features.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tasks" class="tab-content">
+                <h2>Task Management</h2>
+                <button class="add-btn" onclick="showModal()">+ Add New Task</button>
+                
+                <h3 style="margin-top: 30px;">Task 1: Database Setup</h3>
+                <ul class="task-list" id="task1">
+                    <li><input type="checkbox" onchange="toggleTask(this)"><span>Establish Supabase project and integrate with Streamlit</span></li>
+                    <li><input type="checkbox" onchange="toggleTask(this)"><span>Design database schema for users, history, and corrections</span></li>
+                    <li><input type="checkbox" onchange="toggleTask(this)"><span>Implement Row-Level Security (RLS)</span></li>
+                </ul>
+
+                <h3 style="margin-top: 30px;">Task 2: Authentication</h3>
+                <ul class="task-list" id="task2">
+                    <li><input type="checkbox" onchange="toggleTask(this)"><span>Develop login, signup, and password reset pages</span></li>
+                    <li><input type="checkbox" onchange="toggleTask(this)"><span>Configure JWT-based authentication</span></li>
+                    <li><input type="checkbox" onchange="toggleTask(this)"><span>Protect routes and data access</span></li>
+                </ul>
+
+                <h3 style="margin-top: 30px;">Task 3: History Persistence</h3>
+                <ul class="task-list" id="task3">
+                    <li><input type="checkbox" onchange="toggleTask(this)"><span>Replace session storage with Supabase persistence</span></li>
+                    <li><input type="checkbox" onchange="toggleTask(this)"><span>Implement pagination, search, and filter</span></li>
+                    <li><input type="checkbox" onchange="toggleTask(this)"><span>Add export capabilities</span></li>
+                </ul>
+
+                <h3 style="margin-top: 30px;">Task 4: Adaptive Learning</h3>
+                <ul class="task-list" id="task4">
+                    <li><input type="checkbox" onchange="toggleTask(this)"><span>Record and analyze user corrections</span></li>
+                    <li><input type="checkbox" onchange="toggleTask(this)"><span>Adjust ensemble model weights</span></li>
+                    <li><input type="checkbox" onchange="toggleTask(this)"><span>Develop admin dashboard</span></li>
+                </ul>
+
+                <h3 style="margin-top: 30px;">Task 5: Integration & Testing</h3>
+                <ul class="task-list" id="task5">
+                    <li><input type="checkbox" onchange="toggleTask(this)"><span>Merge all components</span></li>
+                    <li><input type="checkbox" onchange="toggleTask(this)"><span>Conduct testing</span></li>
+                    <li><input type="checkbox" onchange="toggleTask(this)"><span>Prepare documentation</span></li>
+                </ul>
+            </div>
+
+            <div id="code" class="tab-content">
+                <h2>Code Repository</h2>
+                <button class="add-btn" onclick="showCodeModal()">+ Add Code Snippet</button>
+                
+                <div class="code-section">
+                    <h3>Main Application Structure</h3>
+                    <div class="code-block" id="codeRepo"></div>
+                </div>
+
+                <div class="code-section">
+                    <h3>Quick Links</h3>
+                    <p>Store your code snippets, configurations, and important commands here.</p>
+                </div>
+            </div>
+
+            <div id="timeline" class="tab-content">
+                <h2>Project Timeline</h2>
+                
+                <div class="timeline">
+                    <div class="timeline-item">
+                        <h4>Week 01 - Initial Development ✅</h4>
+                        <p>Core application built with Streamlit, ensemble AI model integrated, basic UI/UX completed</p>
+                        <small>Status: Completed</small>
+                    </div>
+                    <div class="timeline-item">
+                        <h4>Week 02-03 - Database & Authentication 🚧</h4>
+                        <p>Supabase setup, user authentication, JWT implementation</p>
+                        <small>Status: In Progress</small>
+                    </div>
+                    <div class="timeline-item">
+                        <h4>Week 04-05 - Data Persistence 📅</h4>
+                        <p>History tracking, search/filter functionality, export features</p>
+                        <small>Status: Planned</small>
+                    </div>
+                    <div class="timeline-item">
+                        <h4>Week 06-07 - Adaptive Learning 📅</h4>
+                        <p>User feedback system, model weight adjustment, admin dashboard</p>
+                        <small>Status: Planned</small>
+                    </div>
+                    <div class="timeline-item">
+                        <h4>Week 08 - Testing & Deployment 📅</h4>
+                        <p>Integration testing, documentation, final deployment</p>
+                        <small>Status: Planned</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="taskModal" class="modal">
+        <div class="modal-content">
+            <h2>Add New Task</h2>
+            <input type="text" id="taskTitle" placeholder="Task Title">
+            <textarea id="taskDesc" placeholder="Task Description" rows="4"></textarea>
+            <button class="add-btn" onclick="addTask()">Add Task</button>
+            <button class="add-btn" style="background: #6c757d;" onclick="closeModal()">Cancel</button>
+        </div>
+    </div>
+
+    <div id="codeModal" class="modal">
+        <div class="modal-content">
+            <h2>Add Code Snippet</h2>
+            <input type="text" id="codeTitle" placeholder="Code Title">
+            <textarea id="codeContent" placeholder="Paste your code here..." rows="10"></textarea>
+            <button class="add-btn" onclick="addCode()">Add Code</button>
+            <button class="add-btn" style="background: #6c757d;" onclick="closeCodeModal()">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        let codeSnippets = [];
+        let taskData = {};
+
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+            saveState();
+        }
+
+        function toggleTask(checkbox) {
+            const li = checkbox.parentElement;
+            if (checkbox.checked) {
+                li.classList.add('completed');
+            } else {
+                li.classList.remove('completed');
+            }
+            saveState();
+        }
+
+        function showModal() {
+            document.getElementById('taskModal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('taskModal').classList.remove('active');
+        }
+
+        function showCodeModal() {
+            document.getElementById('codeModal').classList.add('active');
+        }
+
+        function closeCodeModal() {
+            document.getElementById('codeModal').classList.remove('active');
+        }
+
+        function addTask() {
+            const title = document.getElementById('taskTitle').value;
+            const desc = document.getElementById('taskDesc').value;
+            
+            if (title) {
+                const taskList = document.getElementById('task1');
+                const li = document.createElement('li');
+                li.innerHTML = `<input type="checkbox" onchange="toggleTask(this)"><span>${title}: ${desc}</span>`;
+                taskList.appendChild(li);
+                
+                document.getElementById('taskTitle').value = '';
+                document.getElementById('taskDesc').value = '';
+                closeModal();
+                saveState();
+            }
+        }
+
+        function addCode() {
+            const title = document.getElementById('codeTitle').value;
+            const content = document.getElementById('codeContent').value;
+            
+            if (title && content) {
+                codeSnippets.push({title, content});
+                renderCode();
+                
+                document.getElementById('codeTitle').value = '';
+                document.getElementById('codeContent').value = '';
+                closeCodeModal();
+                saveState();
+            }
+        }
+
+        function renderCode() {
+            const codeRepo = document.getElementById('codeRepo');
+            codeRepo.innerHTML = codeSnippets.map((snippet, i) => `
+                <div style="margin-bottom: 20px;">
+                    <strong>${snippet.title}</strong>
+                    <pre style="margin-top: 10px; white-space: pre-wrap;">${snippet.content}</pre>
+                </div>
+            `).join('');
+        }
+
+        function exportProgress() {
+            const text = `
+AI Fake News Detection System - Progress Report
+Generated: ${new Date().toLocaleDateString()}
+
+COMPLETED FEATURES:
+- Real-time news classification
+- Ensemble AI model (BERT + DistilBERT)
+- URL extraction and source validation
+- Confidence scoring
+- Manual correction feedback
+
+IN DEVELOPMENT:
+- Supabase integration
+- User authentication system
+- History tracking & persistence
+- Adaptive model learning
+- Admin dashboard
+
+Team: Musfikur Rahaman, T'avon Goodwin, Lindsey Carl, Shequila Sledge, Dalessandro Verdin-Mendez
+            `;
+            
+            const blob = new Blob([text], {type: 'text/plain'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'progress-report.txt';
+            a.click();
+        }
+
+        function saveState() {
+            const state = {
+                tasks: {},
+                code: codeSnippets
+            };
+            
+            document.querySelectorAll('.task-list').forEach(list => {
+                const tasks = [];
+                list.querySelectorAll('li').forEach(li => {
+                    tasks.push({
+                        text: li.querySelector('span').textContent,
+                        completed: li.classList.contains('completed')
+                    });
+                });
+                state.tasks[list.id] = tasks;
+            });
+            
+            const data = JSON.stringify(state, null, 2);
+            console.log('Current state:', data);
+        }
+
+        function loadState() {
+            renderCode();
+        }
+
+        loadState();
+    </script>
+</body>
+</html>
