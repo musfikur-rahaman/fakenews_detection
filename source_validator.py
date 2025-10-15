@@ -48,8 +48,8 @@ def check_source_reputation(url):
         "wsj.com": ("Highly Reliable", "✅", "Wall Street Journal - business focus"),
         "economist.com": ("Highly Reliable", "✅", "International affairs analysis"),
         
-        # Generally Reliable - Mainstream with occasional bias
-        "cnn.com": ("Generally Reliable", "✔️", "Mainstream news, occasional sensationalism"),
+        # Highly Reliable - Established, fact-checked news organizations
+        "cnn.com": ("Highly Reliable", "✅", "Major news network with editorial standards"),
         "foxnews.com": ("Generally Reliable", "✔️", "Mainstream news, political bias noted"),
         "nbcnews.com": ("Generally Reliable", "✔️", "Major network news"),
         "cbsnews.com": ("Generally Reliable", "✔️", "Major network news"),
