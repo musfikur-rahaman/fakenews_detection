@@ -4,3 +4,4 @@ torch
 python-dotenv
 requests
 langchain-groq
+beautifulsoup4
