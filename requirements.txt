@@ -10,3 +10,6 @@ sentence-transformers
 farm-haystack[inference]
 accelerate
 bitsandbytes==0.43.2
+langchain==0.1.17
+langchain-core==0.1.52
+langchain-groq==0.0.5
