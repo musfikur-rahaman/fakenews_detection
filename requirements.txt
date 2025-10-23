@@ -16,3 +16,5 @@ farm-haystack
 # LangChain
 langchain
 langchain-groq
+
+superbase
