@@ -17,4 +17,4 @@ farm-haystack
 langchain
 langchain-groq
 
-superbase
+supabase-py

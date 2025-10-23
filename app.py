@@ -14,6 +14,8 @@ import time
 import numpy as np
 import os
 from dotenv import load_dotenv
+from supabase_py import create_client, Client
+
 
 # ---------- LOAD ENV VARIABLES ----------
 load_dotenv()
