@@ -17,5 +17,5 @@ farm-haystack
 langchain
 langchain-groq
 
-supabase-py
+supabase==1.0.0
 requests
