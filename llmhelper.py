@@ -1,12 +1,17 @@
 import os
 import streamlit as st
 from dotenv import load_dotenv
+import types
+import langchain
+
+# ⚡ Patch missing langchain.debug (required by ChatGroq)
+if not hasattr(langchain, "debug"):
+    langchain.debug = types.SimpleNamespace(verbose=False)
+
 from langchain_groq import ChatGroq
 
 # Load environment variables
 load_dotenv()
-
-# Get API key from environment or Streamlit secrets
 API_KEY = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY")
 
 # Initialize ChatGroq LLM
@@ -17,11 +22,8 @@ llm = ChatGroq(
     max_tokens=500
 )
 
-# Helper function to debug prompts and responses
+# Debug helper
 def llm_invoke_with_debug(prompt: str) -> str:
-    """
-    Sends a prompt to the LLM and prints debugging info.
-    """
     st.text_area("LLM Prompt", prompt, height=200)
     try:
         response = llm.invoke(prompt)
@@ -31,31 +33,26 @@ def llm_invoke_with_debug(prompt: str) -> str:
         st.error(f"LLM invocation error: {e}")
         return f"Error: {e}"
 
-# Generate explanation why news might be fake
+# Fake news explanation
 def explain_fake_news(text: str) -> str:
     prompt = (
         "Analyze the following news content and explain why it might be fake news. "
         "Focus on:\n"
-        "1. Logical inconsistencies or impossibilities\n"
-        "2. Sensational or emotional language\n"
-        "3. Lack of credible sources or evidence\n"
+        "1. Logical inconsistencies\n"
+        "2. Sensational language\n"
+        "3. Lack of credible sources\n"
         "4. Common fake news patterns\n"
-        "5. Recommendations for verification\n\n"
+        "5. Verification recommendations\n\n"
         f"Content: {text[:800]}\n\n"
-        "Provide a balanced, factual explanation in 3-4 sentences:"
+        "Provide a balanced explanation in 3-4 sentences:"
     )
     return llm_invoke_with_debug(prompt)
 
-# Determine if news is FAKE or REAL
+# Fact-check
 def fact_check(text: str) -> str:
     prompt = (
-        "Carefully analyze this news content and determine if it's FAKE or REAL.\n"
-        "Consider:\n"
-        "- Factual accuracy and plausibility\n"
-        "- Source credibility (if mentioned)\n"
-        "- Evidence and specifics provided\n"
-        "- Common misinformation patterns\n"
-        "- Sensationalism vs factual reporting\n\n"
+        "Determine if this news content is FAKE or REAL.\n"
+        "Consider accuracy, sources, evidence, and sensationalism.\n\n"
         f"Content: {text[:1000]}\n\n"
         "Answer ONLY with FAKE or REAL."
     )
@@ -66,20 +63,16 @@ def fact_check(text: str) -> str:
     elif "REAL" in label:
         return "REAL"
     else:
-        return "REAL"  # default fallback
+        return "REAL"
 
-# Provide explanation for either FAKE or REAL news
+# LLM explanation
 def get_llm_explanation(text: str, classification: str) -> str:
     if classification == "FAKE":
         return explain_fake_news(text)
     else:
         prompt = (
             "Explain why this news content appears to be REAL and credible.\n"
-            "Consider:\n"
-            "- Factual consistency\n"
-            "- Plausible claims with evidence\n"
-            "- Professional tone and language\n"
-            "- Lack of common fake news patterns\n\n"
+            "Consider consistency, evidence, tone, and lack of fake news patterns.\n\n"
             f"Content: {text[:800]}\n\n"
             "Provide a brief explanation in 2-3 sentences:"
         )
@@ -88,7 +81,7 @@ def get_llm_explanation(text: str, classification: str) -> str:
 # Streamlit UI
 st.title("Fake News Analysis with ChatGroq")
 
-news_input = st.text_area("Enter news content for analysis:", height=150)
+news_input = st.text_area("Enter news content:", height=150)
 
 if st.button("Analyze News"):
     if not news_input.strip():
