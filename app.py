@@ -214,9 +214,10 @@ if not st.session_state.logged_in:
 
 # ---------- ENSEMBLE MODEL CONFIGURATION ----------
 MODEL_CONFIG = {
-    "primary": "distilbert-base-uncased-finetuned-sst-2-english"
+    "primary": "distilbert-base-uncased-finetuned-sst-2-english",
     "fallback": "mrm8488/bert-tiny-finetuned-fake-news-detection"
 }
+
 
 @st.cache_resource(show_spinner=False)
 def load_ensemble_models():
