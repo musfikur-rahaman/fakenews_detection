@@ -3,7 +3,16 @@ import streamlit as st
 from dotenv import load_dotenv
 
 # ⚡ Patch missing langchain.verbose to prevent ChatGroq errors
-import langchain
+# Import dynamically to avoid static "could not be resolved" errors in some dev containers,
+# and provide a lightweight fallback stub if the package is not installed.
+try:
+    import importlib
+    langchain = importlib.import_module("langchain")
+except Exception:
+    class _LangChainStub:
+        verbose = False
+    langchain = _LangChainStub()
+
 if not hasattr(langchain, "verbose"):
     langchain.verbose = False
 
