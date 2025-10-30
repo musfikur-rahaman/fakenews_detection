@@ -29,7 +29,7 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ---------- PAGE SETUP (Move to top) ----------
-st.set_page_config(page_title="Fake News Detector", layout="wide", page_icon="🔍")
+st.set_page_config(page_title="Fake News Detector", layout="wide", page_icon="")
 
 # ---------- CSS ----------
 with open("style.css") as f:
