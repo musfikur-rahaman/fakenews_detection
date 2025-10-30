@@ -4,9 +4,11 @@ from dotenv import load_dotenv
 import types
 import langchain
 
-# ⚡ Patch missing langchain.debug (required by ChatGroq)
+# ⚡ Patch missing langchain attributes required by ChatGroq
 if not hasattr(langchain, "debug"):
     langchain.debug = types.SimpleNamespace(verbose=False)
+if not hasattr(langchain, "llm_cache"):
+    langchain.llm_cache = types.SimpleNamespace()
 
 from langchain_groq import ChatGroq
 
