@@ -3,31 +3,30 @@ import streamlit as st
 import importlib
 from dotenv import load_dotenv
 
-# ⚡ Patch missing langchain.verbose to prevent ChatGroq errors
-# Import dynamically to avoid static "could not be resolved" errors in some dev containers,
-# and provide a lightweight fallback stub if the package is not installed.
-# ⚡ Robust LangChain patch — compatible with new and old versions
+import types
+
+# ⚡ Universal LangChain compatibility patch
 try:
     langchain = importlib.import_module("langchain")
-    try:
-        # Newer LangChain (>=0.1) uses langchain_core for debugging & cache management
-        from langchain_core.globals import set_debug, set_llm_cache, get_llm_cache
-        set_debug(False)
-        # Initialize llm_cache if missing
-        if not hasattr(langchain, "llm_cache"):
-            langchain.llm_cache = get_llm_cache()
-    except ImportError:
-        # Fallback for older versions
-        if not hasattr(langchain, "verbose"):
-            langchain.verbose = False
-        if not hasattr(langchain, "llm_cache"):
-            langchain.llm_cache = None
 except Exception:
-    # Fallback stub if LangChain is not installed at all
-    class _LangChainStub:
-        verbose = False
-        llm_cache = None
-    langchain = _LangChainStub()
+    # If LangChain isn't installed at all, make a stub
+    langchain = types.SimpleNamespace(verbose=False, llm_cache=None)
+
+# Ensure 'verbose' and 'llm_cache' attributes exist, even if removed in newer versions
+if not hasattr(langchain, "verbose"):
+    langchain.verbose = False
+
+if not hasattr(langchain, "llm_cache"):
+    langchain.llm_cache = None  # prevent "no attribute 'llm_cache'" errors
+
+# Try new-style debug control (LangChain >= 0.1)
+try:
+    from langchain_core.globals import set_debug, get_llm_cache
+    set_debug(False)
+    # sync llm_cache to core global if possible
+    langchain.llm_cache = get_llm_cache()
+except Exception:
+    pass
 
 from langchain_groq import ChatGroq
 
