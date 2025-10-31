@@ -214,54 +214,32 @@ if not st.session_state.logged_in:
 # ----------------- MAIN APP (Only loads if logged in) -----------------
 
 # ---------- ENSEMBLE MODEL CONFIGURATION ----------
+# ----------------- ENSEMBLE MODEL CONFIG -----------------
 MODEL_CONFIG = {
     "primary": "akhooli/fake-news-detection-roberta",
     "fallback": "distilbert-base-uncased-finetuned-sst-2-english"
 }
 
-
-
 @st.cache_resource(show_spinner=False)
 def load_ensemble_models():
-    """Load CPU-friendly ensemble models for fake news detection"""
     models = {}
     model_weights = {}
-
-    # Primary fake news model
     try:
-        models["primary"] = pipeline(
-            "text-classification",
-            model=MODEL_CONFIG["primary"],
-            device=-1,
-            truncation=True,
-            max_length=256
-        )
+        models["primary"] = pipeline("text-classification", model=MODEL_CONFIG["primary"], device=-1, truncation=True, max_length=256)
         model_weights["primary"] = 0.7
         st.success("✅ Loaded primary fake news model")
     except Exception as e:
         st.error(f"❌ Primary model failed: {e}")
-
-    # Fallback sentiment model
     try:
-        models["fallback"] = pipeline(
-            "text-classification",
-            model=MODEL_CONFIG["fallback"],
-            device=-1,
-            truncation=True,
-            max_length=256
-        )
+        models["fallback"] = pipeline("text-classification", model=MODEL_CONFIG["fallback"], device=-1, truncation=True, max_length=256)
         model_weights["fallback"] = 0.3
         st.success("✅ Loaded fallback sentiment model")
     except Exception as e:
         st.warning(f"⚠️ Fallback model failed: {e}")
-
     return models, model_weights
 
-# ---------- LABEL MAPPING ----------
 def map_label(label, model_name="primary"):
-    """Consistent label mapping across different models"""
     label_str = str(label).upper()
-    
     if model_name == "fallback":
         if "NEGATIVE" in label_str or "LABEL_0" in label_str:
             return "FAKE"
@@ -269,7 +247,6 @@ def map_label(label, model_name="primary"):
             return "REAL"
         else:
             return "REAL"
-    
     if "FAKE" in label_str or "LABEL_1" in label_str:
         return "FAKE"
     elif "REAL" in label_str or "LABEL_0" in label_str:
@@ -277,22 +254,18 @@ def map_label(label, model_name="primary"):
     else:
         return "REAL"
 
-# ---------- ENSEMBLE CLASSIFICATION ----------
+# ----------------- ENSEMBLE CLASSIFICATION -----------------
 def ensemble_classify(text, models, model_weights, source_url=None):
-    """True ensemble classification with weighted voting"""
     if not models:
         return "REAL", 0.5, False, None, []
-    
     predictions = []
     confidence_scores = []
     model_details = []
-    
     for model_name, model in models.items():
         try:
             result = model(text[:1000])[0]
             label = map_label(result['label'], model_name)
             score = result['score']
-            
             predictions.append(label)
             confidence_scores.append(score)
             model_details.append({
@@ -301,108 +274,101 @@ def ensemble_classify(text, models, model_weights, source_url=None):
                 "confidence": score,
                 "weight": model_weights.get(model_name, 0.1)
             })
-            
         except Exception as e:
             st.warning(f"Model {model_name} failed: {e}")
             continue
-    
     if not predictions:
         st.warning("⚠️ All models failed, using fallback classification")
         return "REAL", 0.5, False, None, []
-    
+
     fake_score = 0
     real_score = 0
     total_weight = 0
-    
     for i, (model_name, prediction) in enumerate(zip(models.keys(), predictions)):
         if model_name in model_weights:
             weight = model_weights[model_name]
             confidence = confidence_scores[i]
-            
             if prediction == "FAKE":
                 fake_score += weight * confidence
             else:
                 real_score += weight * confidence
-            
             total_weight += weight
-    
     if total_weight > 0:
         fake_score /= total_weight
         real_score /= total_weight
-    
-    if fake_score > real_score:
-        final_label = "FAKE"
-        final_confidence = fake_score
-    else:
-        final_label = "REAL" 
-        final_confidence = real_score
-    
+
+    final_label = "FAKE" if fake_score > real_score else "REAL"
+    final_confidence = fake_score if final_label=="FAKE" else real_score
+
+    # Detect hallucinations / absurd claims
     halluc_flag = detect_hallucination_patterns(text)
-    
+
+    # Source reputation
     source_reputation = None
     source_warnings = []
     if source_url and source_url.strip():
         rep_level, emoji, description = check_source_reputation(source_url)
-        source_reputation = {
-            "level": rep_level,
-            "emoji": emoji,
-            "description": description
-        }
+        source_reputation = {"level": rep_level, "emoji": emoji, "description": description}
         source_warnings = analyze_url_characteristics(source_url)
-    
-    final_label, final_confidence = fuse_predictions(
-        final_label, final_confidence, halluc_flag, source_reputation, model_details
-    )
-    
+
+    final_label, final_confidence = fuse_predictions(final_label, final_confidence, halluc_flag, source_reputation, model_details)
     return final_label, final_confidence, halluc_flag, source_reputation, source_warnings, model_details
 
 def fuse_predictions(ensemble_label, ensemble_confidence, halluc_flag, source_reputation, model_details):
-    """Fuse ensemble predictions with mild heuristic adjustments"""
     label = ensemble_label
     confidence = ensemble_confidence
-    
+
     if halluc_flag:
-        confidence = min(confidence + 0.10, 0.90)
-        if confidence > 0.65 and label == "REAL":
-            label = "FAKE"
-    
+        # Strong boost for impossible / absurd claims
+        confidence = min(confidence + 0.35, 0.99)
+        label = "FAKE"
+
     if source_reputation:
         rep_level = source_reputation.get("level", "")
         source_weight = 0.15
-        
         if rep_level in ["Unreliable", "Satire"] and label == "FAKE":
             confidence = min(confidence + (0.2 * source_weight), 0.95)
         elif rep_level == "Highly Reliable" and label == "FAKE" and confidence < 0.75:
             confidence = confidence * (1 - source_weight)
-    
+
     confidence = max(0.1, min(0.99, confidence))
-    
     return label, confidence
 
 def detect_hallucination_patterns(text):
-    """Enhanced pattern detection with context awareness"""
     text_lower = text.lower()
-    
     strong_indicators = [
         "microchip in vaccine", "5g caused", "flat earth", "alien body found",
-        "celebrity cloned", "time travel", "flying pigs", "talking animals",
-        "zombie outbreak", "immortality pill", "magic cure", "overnight millionaire",
-        "government hiding aliens", "secret cancer cure", "world ending tomorrow",
-        "emotional support clown", "hiring absurdity", "donuts stolen by squirrels"
+        "alien mining", "flying pigs", "zombie outbreak", "immortality pill",
+        "magic cure", "government hiding aliens", "time travel", "talking animals",
+        "glowing blue river", "digitally altered", "fake photo", "deepfake",
+        "photoshop", "edited image", "emotionally intelligent toaster",
+        "ai president", "ai sworn in", "ai supreme court", "robot judge",
+        "resurrected dinosaurs", "teleportation device", "weather control machine"
     ]
-    
-    for indicator in strong_indicators:
-        if indicator in text_lower:
+    for phrase in strong_indicators:
+        if phrase in text_lower:
             return True
-    
+
     contextual_indicators = [
         "breaking news", "shocking discovery", "they don't want you to know",
-        "doctors hate this", "miracle cure", "secret revealed", "cover-up",
-        "leaked documents", "forbidden knowledge", "mainstream media won't tell you"
+        "miracle cure", "secret revealed", "forbidden knowledge",
+        "mainstream media won't tell you", "cover-up"
     ]
-    
-    context_count = sum(1 for indicator in contextual_indicators if indicator in text_lower)
-    return context_count >= 3
+    context_count = sum(1 for phrase in contextual_indicators if phrase in text_lower)
+    if context_count >= 2:
+        return True
+
+    logical_indicators = [
+        "sworn into the u.s. supreme court", "nominated by ai",
+        "machine president", "time traveler", "moon made of cheese",
+        "aliens elected", "living statue", "eternal youth formula",
+        "humans can fly without aid", "animals talking to humans"
+    ]
+    for phrase in logical_indicators:
+        if phrase in text_lower:
+            return True
+
+    return False
 
 # ---------- HEADER ----------
 st.markdown("<h1 style='text-align:center; color:#333;'>🔍 Fake News Detector</h1>", unsafe_allow_html=True)
