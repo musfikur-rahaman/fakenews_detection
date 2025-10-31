@@ -216,7 +216,7 @@ if not st.session_state.logged_in:
 # ---------- ENSEMBLE MODEL CONFIGURATION ----------
 # ----------------- ENSEMBLE MODEL CONFIG -----------------
 MODEL_CONFIG = {
-    "primary": "akhooli/fake-news-detection-roberta",
+    "primary": "mrm8488/bert-tiny-finetuned-fake-news-detection",
     "fallback": "distilbert-base-uncased-finetuned-sst-2-english"
 }
 
