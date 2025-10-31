@@ -10,17 +10,23 @@ from dotenv import load_dotenv
 try:
     langchain = importlib.import_module("langchain")
     try:
-        # Newer LangChain versions (>= 0.1) use langchain_core for debugging
-        from langchain_core.globals import set_debug
-        set_debug(False)  # Equivalent to langchain.verbose = False
+        # Newer LangChain (>=0.1) uses langchain_core for debugging & cache management
+        from langchain_core.globals import set_debug, set_llm_cache, get_llm_cache
+        set_debug(False)
+        # Initialize llm_cache if missing
+        if not hasattr(langchain, "llm_cache"):
+            langchain.llm_cache = get_llm_cache()
     except ImportError:
-        # Backward compatibility for older LangChain releases
+        # Fallback for older versions
         if not hasattr(langchain, "verbose"):
             langchain.verbose = False
+        if not hasattr(langchain, "llm_cache"):
+            langchain.llm_cache = None
 except Exception:
-    # Fallback stub if LangChain isn't installed
+    # Fallback stub if LangChain is not installed at all
     class _LangChainStub:
         verbose = False
+        llm_cache = None
     langchain = _LangChainStub()
 
 from langchain_groq import ChatGroq
